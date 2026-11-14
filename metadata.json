@@ -1,0 +1,6 @@
+{
+  "name": "সংকলন-ৎ",
+  "description": "সংকলন-ৎ | Sankalan-t: Creative Life Journal — A vintage walnut-and-gold offline-first digital journal, scrapbook, and book-reading studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

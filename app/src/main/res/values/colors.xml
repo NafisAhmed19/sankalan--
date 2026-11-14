@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="walnut_900">#FF241A16</color>
+    <color name="walnut_800">#FF38271F</color>
+    <color name="antique_gold">#FFB08A4F</color>
+    <color name="cream">#FFF4EBDD</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
