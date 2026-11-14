@@ -79,12 +79,31 @@ object AppUpdateChecker {
   private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
   private val adapter = moshi.adapter(UpdateReleaseManifest::class.java)
 
+  private const val DEFAULT_GITHUB_REPO = "NafisAhmed19/sankalan--"
+
+  private fun extractGithubRepoSlugOrNull(clean: String): String? {
+    if (!clean.startsWith("https://github.com/", ignoreCase = true) &&
+      !clean.startsWith("http://github.com/", ignoreCase = true)
+    ) {
+      return null
+    }
+    val path =
+      clean
+        .substringAfter("github.com/", "")
+        .trim('/')
+        .removeSuffix(".git")
+    val segments = path.split('/').filter { it.isNotBlank() }
+    return if (segments.size == 2) "${segments[0]}/${segments[1]}" else null
+  }
+
   fun resolveManifestUrl(repoOrUrl: String): String {
     val clean = repoOrUrl.trim()
+    val pastedGithubSlug = extractGithubRepoSlugOrNull(clean)
     return when {
+      pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest/download/version.json"
       clean.startsWith("https://", ignoreCase = true) -> clean
-      clean.contains("/") -> "https://github.com/$clean/releases/latest/download/version.json"
-      else -> "https://github.com/nrstech-dev/sankalan-releases/releases/latest/download/version.json"
+      clean.contains("/") -> "https://github.com/${clean.trim('/')}/releases/latest/download/version.json"
+      else -> "https://github.com/$DEFAULT_GITHUB_REPO/releases/latest/download/version.json"
     }
   }
 
@@ -93,7 +112,9 @@ object AppUpdateChecker {
    */
   fun resolveFixedReleaseUrl(repoOrUrl: String): String {
     val clean = repoOrUrl.trim()
+    val pastedGithubSlug = extractGithubRepoSlugOrNull(clean)
     return when {
+      pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest"
       clean.startsWith("https://", ignoreCase = true) -> {
         if (clean.contains("/releases/latest/download/")) {
           clean.substringBefore("/releases/latest/download/") + "/releases/latest"
@@ -101,8 +122,8 @@ object AppUpdateChecker {
           clean
         }
       }
-      clean.contains("/") -> "https://github.com/$clean/releases/latest"
-      else -> "https://github.com/nrstech-dev/sankalan-releases/releases/latest"
+      clean.contains("/") -> "https://github.com/${clean.trim('/')}/releases/latest"
+      else -> "https://github.com/$DEFAULT_GITHUB_REPO/releases/latest"
     }
   }
 

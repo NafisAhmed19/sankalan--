@@ -61,7 +61,7 @@ data class AppSettings(
   val reminderMinute: Int = 0,
   val lockEnabled: Boolean = false,
   val hasChosenInitialLanguage: Boolean = false,
-  val githubUpdateRepo: String = "nrstech-dev/sankalan-releases",
+  val githubUpdateRepo: String = "NafisAhmed19/sankalan--",
 )
 
 /**

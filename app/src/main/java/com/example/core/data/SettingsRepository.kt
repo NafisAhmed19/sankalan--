@@ -59,7 +59,10 @@ class SettingsRepository(private val context: Context) {
         reminderMinute = (prefs[Keys.REMINDER_MINUTE] ?: 0).coerceIn(0, 59),
         lockEnabled = prefs[Keys.LOCK_ENABLED] ?: false,
         hasChosenInitialLanguage = prefs[Keys.HAS_CHOSEN_INITIAL_LANGUAGE] ?: false,
-        githubUpdateRepo = prefs[Keys.GITHUB_UPDATE_REPO] ?: "nrstech-dev/sankalan-releases",
+        githubUpdateRepo =
+          prefs[Keys.GITHUB_UPDATE_REPO]
+            ?.takeUnless { it.isBlank() || it == "nrstech-dev/sankalan-releases" }
+            ?: "NafisAhmed19/sankalan--",
       )
     }
 
@@ -124,6 +127,6 @@ class SettingsRepository(private val context: Context) {
   }
 
   suspend fun setGithubUpdateRepo(repo: String) {
-    context.settingsDataStore.edit { it[Keys.GITHUB_UPDATE_REPO] = repo.trim().ifEmpty { "nrstech-dev/sankalan-releases" } }
+    context.settingsDataStore.edit { it[Keys.GITHUB_UPDATE_REPO] = repo.trim().ifEmpty { "NafisAhmed19/sankalan--" } }
   }
 }

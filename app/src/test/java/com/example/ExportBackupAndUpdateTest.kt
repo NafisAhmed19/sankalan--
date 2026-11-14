@@ -251,6 +251,19 @@ class ExportBackupAndUpdateTest {
     assertTrue(template.contains("\"versionCode\": 2"))
     assertTrue(template.contains("https://github.com/octo/sankalan/releases/latest/download/sankalan-t.apk"))
 
+    assertEquals(
+      "https://github.com/NafisAhmed19/sankalan--/releases/latest/download/version.json",
+      AppUpdateChecker.resolveManifestUrl("https://github.com/NafisAhmed19/sankalan--"),
+    )
+    assertEquals(
+      "https://github.com/NafisAhmed19/sankalan--/releases/latest",
+      AppUpdateChecker.resolveFixedReleaseUrl("NafisAhmed19/sankalan--"),
+    )
+    assertEquals(
+      "https://github.com/NafisAhmed19/sankalan--/releases/latest",
+      AppUpdateChecker.resolveFixedReleaseUrl(""),
+    )
+
     val badRes = AppUpdateChecker.parseUpdateManifest("{broken json", currentVersionCode = 1, currentVersionName = "1.0")
     assertTrue(badRes is UpdateCheckResult.Failed)
   }

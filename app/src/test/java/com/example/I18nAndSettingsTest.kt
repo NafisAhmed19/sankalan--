@@ -57,6 +57,7 @@ class I18nAndSettingsTest {
     assertEquals(NumeralStyle.LATIN, defaults.numeralStyle) // §11 default 0-9
     assertTrue(PhaseFlags.PHASE_1_ALL_LOCAL_FEATURES_FREE) // D-29
     assertFalse(PhaseFlags.PHASE_2_COMMUNITY_EXPLORE_ENABLED) // §4 hidden until Phase 2
+    assertEquals("NafisAhmed19/sankalan--", defaults.githubUpdateRepo)
   }
 
   @Test
