@@ -1,0 +1,62 @@
+name: Build & Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (খালি রাখলে অটো v1.0 নেবে)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+      - name: Prepare keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -di debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+      - name: Build APK
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Package APK & version.json
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/sankalan-t.apk
+          VER_CODE=$(grep -m1 'versionCode =' app/build.gradle.kts | awk '{print $3}' | tr -d '\r')
+          VER_NAME=$(grep -m1 'versionName =' app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '\r')
+          cat > dist/version.json <<EOF
+          {
+            "versionCode": ${VER_CODE},
+            "versionName": "${VER_NAME}",
+            "changelogEn": "New release of Sankalan-t v${VER_NAME}.",
+            "changelogBn": "সংকলন-ৎ v${VER_NAME} রিলিজ হয়েছে।",
+            "downloadUrl": "https://github.com/${{ github.repository }}/releases/latest/download/sankalan-t.apk"
+          }
+          EOF
+          echo "VER_NAME=${VER_NAME}" >> "$GITHUB_ENV"
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          TAG="${INPUT_TAG:-v${VER_NAME}}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/sankalan-t.apk dist/version.json --clobber
+          else
+            gh release create "$TAG" dist/sankalan-t.apk dist/version.json --title "সংকলন-ৎ | Sankalan-t $TAG" --notes "Official release of Sankalan-t."
+          fi
