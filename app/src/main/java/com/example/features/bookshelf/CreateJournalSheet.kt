@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -136,7 +137,7 @@ fun CreateJournalSheet(
           pageCount = initialPages,
           numeralStyle = numeralStyle,
           isBack = false,
-          modifier = Modifier.width(140.dp).height(184.dp),
+          modifier = Modifier.width(144.dp).aspectRatio(0.72f),
         )
       }
 

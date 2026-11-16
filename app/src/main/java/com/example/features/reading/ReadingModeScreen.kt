@@ -2,23 +2,26 @@ package com.example.features.reading
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,6 +60,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,9 +69,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -88,6 +95,8 @@ import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanSpacing
 import com.example.ui.theme.SankalanTokens
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -150,33 +159,44 @@ fun ReadingModeScreen(
 
   // Interactive Page-Curl drag state (-1f..+1f; negative = curling forward to next slot)
   val curlProgress = remember { Animatable(0f) }
+  var dragStartYFraction by remember { mutableFloatStateOf(0.5f) }
+  var transitionJob by remember { mutableStateOf<Job?>(null) }
   val useCurl = settings.pageTurnAnimation && !settings.liteMode && !settings.reducedMotion
 
+  val latestSlotIndex = rememberUpdatedState(currentSlotIndex)
+  val latestSlots = rememberUpdatedState(slots)
+  val latestUseCurl = rememberUpdatedState(useCurl)
+  val latestZoomScale = rememberUpdatedState(zoomScale)
+  val latestPanOffset = rememberUpdatedState(panOffset)
+
   fun goToSlot(newIndex: Int) {
-    val clamped = newIndex.coerceIn(0, slots.lastIndex)
-    if (clamped == currentSlotIndex) return
-    val direction = if (clamped > currentSlotIndex) -1f else 1f
-    scope.launch {
-      if (useCurl) {
+    val slotList = latestSlots.value
+    val curIdx = latestSlotIndex.value
+    val clamped = newIndex.coerceIn(0, slotList.lastIndex.coerceAtLeast(0))
+    if (clamped == curIdx || slotList.isEmpty()) {
+      transitionJob?.cancel()
+      transitionJob = scope.launch { curlProgress.animateTo(0f, tween(160)) }
+      return
+    }
+    val direction = if (clamped > curIdx) -1f else 1f
+    transitionJob?.cancel()
+    transitionJob =
+      scope.launch {
+        val remainingRatio = (1f - abs(curlProgress.value)).coerceIn(0.15f, 1f)
+        val durationMs = ((if (latestUseCurl.value) 230 else 160) * remainingRatio).toInt().coerceIn(80, 250)
         curlProgress.animateTo(
           targetValue = direction,
-          animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+          animationSpec = tween(durationMillis = durationMs, easing = FastOutSlowInEasing),
         )
-      }
-      currentSlotIndex = clamped
-      preservedPageId = ReadingSlotBuilder.primaryPageId(slots[clamped])
-      zoomScale = 1f
-      panOffset = Offset.Zero
-      voiceManager.stopPlayback()
-      playingVoiceElementId = null
-      soundPlayer.playIfEnabled(settings.pageTurnSound)
-      if (useCurl) {
-        curlProgress.snapTo(-direction * 0.25f)
-        curlProgress.animateTo(0f, tween(durationMillis = 180, easing = FastOutSlowInEasing))
-      } else {
+        currentSlotIndex = clamped
+        preservedPageId = ReadingSlotBuilder.primaryPageId(slotList[clamped])
+        zoomScale = 1f
+        panOffset = Offset.Zero
+        voiceManager.stopPlayback()
+        playingVoiceElementId = null
+        soundPlayer.playIfEnabled(settings.pageTurnSound)
         curlProgress.snapTo(0f)
       }
-    }
   }
 
   BackHandler {
@@ -325,7 +345,7 @@ fun ReadingModeScreen(
             }
           }
 
-          // Center Interactive Book Stage (Drag Curl + Pinch Zoom + Double-Tap Zoom)
+          // Center Interactive Book Stage (Unified Corner/Edge Drag Curl + Pinch Zoom + Double-Tap Zoom)
           Box(
             modifier =
               Modifier
@@ -336,73 +356,222 @@ fun ReadingModeScreen(
                   horizontal = if (isFullscreen) SankalanSpacing.sm else SankalanSpacing.md,
                   vertical = if (isFullscreen) SankalanSpacing.sm else SankalanSpacing.md,
                 )
-                .pointerInput(currentSlotIndex, slots.size, useCurl, zoomScale) {
-                  if (zoomScale <= 1.05f) {
-                    detectHorizontalDragGestures(
-                      onDragEnd = {
-                        val cur = curlProgress.value
-                        when {
-                          cur < -0.22f && currentSlotIndex < slots.lastIndex ->
-                            goToSlot(currentSlotIndex + 1)
-                          cur > 0.22f && currentSlotIndex > 0 ->
-                            goToSlot(currentSlotIndex - 1)
-                          else -> scope.launch { curlProgress.animateTo(0f, tween(180)) }
+                .testTag("reading_book_stage")
+                .pointerInput(Unit) {
+                  awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startPos = down.position
+                    val stageW = size.width.coerceAtLeast(1).toFloat()
+                    val stageH = size.height.coerceAtLeast(1).toFloat()
+                    val startYFrac = (startPos.y / stageH).coerceIn(0.1f, 0.9f)
+                    val nearCornerOrEdge = startPos.x <= stageW * 0.24f || startPos.x >= stageW * 0.76f
+                    val velocityTracker = VelocityTracker().apply {
+                      addPosition(down.uptimeMillis, startPos)
+                    }
+                    var mode = 0 // 0=undecided, 1=page_turn, 2=pan_zoomed, 3=pinch_zoom
+                    while (true) {
+                      val event = awaitPointerEvent()
+                      val pressed = event.changes.filter { it.pressed }
+                      if (pressed.isEmpty()) break
+
+                      if (pressed.size >= 2) {
+                        mode = 3
+                        val zoomChange = event.calculateZoom()
+                        val panChange = event.calculatePan()
+                        val newZoom = (latestZoomScale.value * zoomChange).coerceIn(1f, 3f)
+                        zoomScale = newZoom
+                        panOffset =
+                          if (newZoom <= 1.02f) Offset.Zero
+                          else {
+                            val maxPanX = size.width * (newZoom - 1f) * 0.45f
+                            val maxPanY = size.height * (newZoom - 1f) * 0.45f
+                            Offset(
+                              x = (latestPanOffset.value.x + panChange.x).coerceIn(-maxPanX, maxPanX),
+                              y = (latestPanOffset.value.y + panChange.y).coerceIn(-maxPanY, maxPanY),
+                            )
+                          }
+                        event.changes.forEach { it.consume() }
+                        if (abs(curlProgress.value) > 0.005f) {
+                          transitionJob?.cancel()
+                          transitionJob = scope.launch { curlProgress.animateTo(0f, tween(120)) }
                         }
-                      },
-                      onDragCancel = {
-                        scope.launch { curlProgress.animateTo(0f, tween(180)) }
-                      },
-                      onHorizontalDrag = { _, dragAmount ->
-                        val delta = dragAmount / (size.width.coerceAtLeast(1) * 0.72f)
-                        val canLeft = currentSlotIndex < slots.lastIndex
-                        val canRight = currentSlotIndex > 0
-                        val next =
-                          (curlProgress.value + delta).let { raw ->
-                            when {
-                              raw < 0f && !canLeft -> raw * 0.2f
-                              raw > 0f && !canRight -> raw * 0.2f
-                              else -> raw.coerceIn(-0.95f, 0.95f)
+                      } else {
+                        val change = pressed.first()
+                        val delta = change.positionChange()
+                        if (mode == 3) {
+                          // Stay in pinch mode until all fingers lift
+                          change.consume()
+                        } else if (latestZoomScale.value > 1.05f) {
+                          val totalOffset = change.position - startPos
+                          if (mode == 2 || totalOffset.getDistance() > viewConfiguration.touchSlop) {
+                            mode = 2
+                            val curZoom = latestZoomScale.value
+                            val maxPanX = size.width * (curZoom - 1f) * 0.45f
+                            val maxPanY = size.height * (curZoom - 1f) * 0.45f
+                            panOffset =
+                              Offset(
+                                x = (latestPanOffset.value.x + delta.x).coerceIn(-maxPanX, maxPanX),
+                                y = (latestPanOffset.value.y + delta.y).coerceIn(-maxPanY, maxPanY),
+                              )
+                            change.consume()
+                          }
+                        } else {
+                          if (mode == 0) {
+                            val totalOffset = change.position - startPos
+                            if (totalOffset.getDistance() > viewConfiguration.touchSlop &&
+                              PageTurnPhysics.isPageTurnDragSlope(totalOffset.x, totalOffset.y, nearCornerOrEdge)
+                            ) {
+                              mode = 1
+                              dragStartYFraction = startYFrac
+                              transitionJob?.cancel()
+                              val lastIdx = latestSlots.value.lastIndex
+                              val curIdx = latestSlotIndex.value
+                              val next =
+                                PageTurnPhysics.computeDragProgress(
+                                  dragDeltaPx = totalOffset.x,
+                                  stageWidthPx = stageW,
+                                  currentProgress = curlProgress.value,
+                                  canFlipForward = curIdx < lastIdx,
+                                  canFlipBackward = curIdx > 0,
+                                )
+                              scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                curlProgress.snapTo(next)
+                              }
+                              velocityTracker.addPosition(change.uptimeMillis, change.position)
+                              change.consume()
+                            }
+                          } else if (mode == 1) {
+                            velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            change.consume()
+                            val lastIdx = latestSlots.value.lastIndex
+                            val curIdx = latestSlotIndex.value
+                            val next =
+                              PageTurnPhysics.computeDragProgress(
+                                dragDeltaPx = delta.x,
+                                stageWidthPx = stageW,
+                                currentProgress = curlProgress.value,
+                                canFlipForward = curIdx < lastIdx,
+                                canFlipBackward = curIdx > 0,
+                              )
+                            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                              curlProgress.snapTo(next)
                             }
                           }
-                        scope.launch { curlProgress.snapTo(next) }
-                      },
-                    )
-                  }
-                }
-                .pointerInput(zoomScale) {
-                  detectTransformGestures { _, pan, zoom, _ ->
-                    val newZoom = (zoomScale * zoom).coerceIn(1f, 3f)
-                    zoomScale = newZoom
-                    panOffset =
-                      if (newZoom <= 1.02f) Offset.Zero
-                      else {
-                        val maxPanX = size.width * (newZoom - 1f) * 0.45f
-                        val maxPanY = size.height * (newZoom - 1f) * 0.45f
-                        Offset(
-                          x = (panOffset.x + pan.x).coerceIn(-maxPanX, maxPanX),
-                          y = (panOffset.y + pan.y).coerceIn(-maxPanY, maxPanY),
-                        )
+                        }
                       }
+                    }
+
+                    if (mode == 1) {
+                      val velocityX = velocityTracker.calculateVelocity().x
+                      val curIdx = latestSlotIndex.value
+                      val lastIdx = latestSlots.value.lastIndex
+                      val targetIdx =
+                        PageTurnPhysics.resolveSwipeOutcome(
+                          progress = curlProgress.value,
+                          velocityX = velocityX,
+                          currentSlotIndex = curIdx,
+                          lastSlotIndex = lastIdx,
+                        )
+                      if (targetIdx != curIdx) {
+                        goToSlot(targetIdx)
+                      } else {
+                        transitionJob?.cancel()
+                        transitionJob =
+                          scope.launch {
+                            curlProgress.animateTo(
+                              targetValue = 0f,
+                              animationSpec = spring(stiffness = 520f, dampingRatio = 0.84f),
+                            )
+                          }
+                      }
+                    }
                   }
                 }
                 .pointerInput(Unit) {
                   detectTapGestures(
                     onDoubleTap = {
-                      if (zoomScale > 1.05f) {
+                      if (latestZoomScale.value > 1.05f) {
                         zoomScale = 1f
                         panOffset = Offset.Zero
                       } else {
                         zoomScale = 1.85f
                       }
                     },
-                    onTap = { isFullscreen = !isFullscreen },
+                    onTap = { tapOffset ->
+                      val curIdx = latestSlotIndex.value
+                      val lastIdx = latestSlots.value.lastIndex
+                      val w = size.width.toFloat().coerceAtLeast(1f)
+                      val h = size.height.toFloat().coerceAtLeast(1f)
+                      val tappedRightCorner =
+                        latestZoomScale.value <= 1.05f &&
+                          tapOffset.x >= w * 0.78f &&
+                          tapOffset.y >= h * 0.78f &&
+                          curIdx < lastIdx
+                      val tappedLeftCorner =
+                        latestZoomScale.value <= 1.05f &&
+                          tapOffset.x <= w * 0.22f &&
+                          tapOffset.y >= h * 0.78f &&
+                          curIdx > 0
+                      when {
+                        tappedRightCorner -> {
+                          dragStartYFraction = 0.85f
+                          goToSlot(curIdx + 1)
+                        }
+                        tappedLeftCorner -> {
+                          dragStartYFraction = 0.85f
+                          goToSlot(curIdx - 1)
+                        }
+                        else -> isFullscreen = !isFullscreen
+                      }
+                    },
                   )
                 },
             contentAlignment = Alignment.Center,
           ) {
             val dragNorm = curlProgress.value
             val absCurl = abs(dragNorm).coerceIn(0f, 1f)
+            val underneathSlot =
+              when {
+                dragNorm < -0.002f -> slots.getOrNull(currentSlotIndex + 1)
+                dragNorm > 0.002f -> slots.getOrNull(currentSlotIndex - 1)
+                else -> null
+              }
+            val onVoiceClick: (com.example.core.model.CanvasElement) -> Unit = { el ->
+              voiceManager.togglePlay(el.id, el.blobRef) { activeId ->
+                playingVoiceElementId = activeId
+              }
+            }
 
+            // Underneath revealing page (next or previous slot revealed while peeling top page)
+            if (underneathSlot != null) {
+              Box(
+                modifier =
+                  Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                      val revealScale = 0.96f + 0.04f * absCurl
+                      scaleX = revealScale
+                      scaleY = revealScale
+                      alpha = (0.62f + 0.38f * absCurl).coerceIn(0f, 1f)
+                    },
+                contentAlignment = Alignment.Center,
+              ) {
+                SlotContentRenderer(
+                  slot = underneathSlot,
+                  numeralStyle = settings.numeralStyle,
+                  playingVoiceElementId = playingVoiceElementId,
+                  onVoiceElementClick = onVoiceClick,
+                )
+                Box(
+                  modifier =
+                    Modifier
+                      .fillMaxSize()
+                      .background(Color.Black.copy(alpha = (1f - absCurl) * 0.26f))
+                )
+              }
+            }
+
+            // Active top page (follows finger drag 1:1 from any corner or edge)
             Box(
               modifier =
                 Modifier
@@ -410,54 +579,39 @@ fun ReadingModeScreen(
                   .graphicsLayer {
                     scaleX = zoomScale
                     scaleY = zoomScale
-                    translationX =
-                      panOffset.x + (if (useCurl) dragNorm * size.width * 0.16f else dragNorm * size.width * 0.25f)
+                    translationX = panOffset.x + dragNorm * size.width * 0.92f
                     translationY = panOffset.y
-                    if (useCurl) {
-                      rotationY = dragNorm * 28f
-                      cameraDistance = 14f * density
+                    if (useCurl && absCurl > 0.002f) {
+                      rotationY = dragNorm * 24f
+                      rotationZ = dragNorm * (dragStartYFraction - 0.5f) * 14f
+                      cameraDistance = 16f * density
                       transformOrigin =
-                        if (dragNorm < 0f) TransformOrigin(0.1f, 0.5f)
-                        else TransformOrigin(0.9f, 0.5f)
-                    } else {
-                      alpha = (1f - absCurl * 0.35f).coerceIn(0.65f, 1f)
+                        if (dragNorm < 0f) TransformOrigin(0f, dragStartYFraction)
+                        else TransformOrigin(1f, dragStartYFraction)
+                      alpha = (1f - ((absCurl - 0.72f).coerceAtLeast(0f) / 0.28f) * 0.65f).coerceIn(0.35f, 1f)
+                    } else if (!useCurl && absCurl > 0.002f) {
+                      alpha = (1f - absCurl * 0.35f).coerceIn(0.45f, 1f)
                     }
                   },
               contentAlignment = Alignment.Center,
             ) {
-              val onVoiceClick: (com.example.core.model.CanvasElement) -> Unit = { el ->
-                voiceManager.togglePlay(el.id, el.blobRef) { activeId ->
-                  playingVoiceElementId = activeId
-                }
-              }
-              if (!useCurl) {
-                Crossfade(targetState = currentSlot, label = "litePageFlip") { slot ->
-                  SlotContentRenderer(
-                    slot = slot,
-                    numeralStyle = settings.numeralStyle,
-                    playingVoiceElementId = playingVoiceElementId,
-                    onVoiceElementClick = onVoiceClick,
-                  )
-                }
-              } else {
-                SlotContentRenderer(
-                  slot = currentSlot,
-                  numeralStyle = settings.numeralStyle,
-                  playingVoiceElementId = playingVoiceElementId,
-                  onVoiceElementClick = onVoiceClick,
-                )
-              }
+              SlotContentRenderer(
+                slot = currentSlot,
+                numeralStyle = settings.numeralStyle,
+                playingVoiceElementId = playingVoiceElementId,
+                onVoiceElementClick = onVoiceClick,
+              )
 
               // Realistic Page Curl Fold Highlight + Cast Drop Shadow Overlay
               if (useCurl && absCurl > 0.02f) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                   val curlsFromRight = dragNorm < 0f
                   val curlX =
-                    if (curlsFromRight) size.width * (1f - absCurl * 0.65f)
-                    else size.width * (absCurl * 0.65f)
-                  val bandW = 44.dp.toPx() * (0.4f + absCurl * 0.6f)
+                    if (curlsFromRight) size.width * (1f - absCurl * 0.55f)
+                    else size.width * (absCurl * 0.55f)
+                  val bandW = 48.dp.toPx() * (0.45f + absCurl * 0.55f)
 
-                  // Warm folded back-paper edge highlight
+                  // Warm folded back-paper edge highlight & shadow
                   drawRect(
                     brush =
                       Brush.horizontalGradient(
@@ -466,7 +620,7 @@ fun ReadingModeScreen(
                             Color.Transparent,
                             SankalanTokens.Cream.copy(alpha = 0.55f * absCurl),
                             SankalanTokens.PaperShadow.copy(alpha = 0.72f * absCurl),
-                            Color.Black.copy(alpha = 0.28f * absCurl),
+                            Color.Black.copy(alpha = 0.30f * absCurl),
                             Color.Transparent,
                           ),
                         startX = (curlX - bandW).coerceAtLeast(0f),
@@ -475,6 +629,49 @@ fun ReadingModeScreen(
                     topLeft = Offset(0f, 0f),
                     size = Size(size.width, size.height),
                   )
+                }
+              }
+            }
+
+            // Visual Corner Dog-Ear & Left-Edge Curl Cues when unzoomed and at rest
+            if (zoomScale <= 1.05f && absCurl < 0.03f) {
+              Canvas(modifier = Modifier.fillMaxSize()) {
+                val cornerSize = 26.dp.toPx()
+                if (currentSlotIndex < slots.lastIndex) {
+                  val brShadow =
+                    Path().apply {
+                      moveTo(size.width - cornerSize - 4.dp.toPx(), size.height)
+                      lineTo(size.width, size.height - cornerSize - 4.dp.toPx())
+                      lineTo(size.width, size.height)
+                      close()
+                    }
+                  drawPath(brShadow, color = Color.Black.copy(alpha = 0.22f))
+                  val brFold =
+                    Path().apply {
+                      moveTo(size.width - cornerSize, size.height)
+                      lineTo(size.width - cornerSize * 0.24f, size.height - cornerSize * 0.24f)
+                      lineTo(size.width, size.height - cornerSize)
+                      close()
+                    }
+                  drawPath(brFold, color = SankalanTokens.AntiqueGold.copy(alpha = 0.85f))
+                }
+                if (currentSlotIndex > 0) {
+                  val blShadow =
+                    Path().apply {
+                      moveTo(0f, size.height - cornerSize - 4.dp.toPx())
+                      lineTo(cornerSize + 4.dp.toPx(), size.height)
+                      lineTo(0f, size.height)
+                      close()
+                    }
+                  drawPath(blShadow, color = Color.Black.copy(alpha = 0.18f))
+                  val blFold =
+                    Path().apply {
+                      moveTo(0f, size.height - cornerSize)
+                      lineTo(cornerSize * 0.24f, size.height - cornerSize * 0.24f)
+                      lineTo(cornerSize, size.height)
+                      close()
+                    }
+                  drawPath(blFold, color = SankalanTokens.AntiqueGold.copy(alpha = 0.72f))
                 }
               }
             }
@@ -608,22 +805,26 @@ private fun SlotContentRenderer(
 ) {
   when (slot) {
     is ReadingSlot.FrontCover -> {
-      BookCoverArt(
-        diary = slot.diary,
-        pageCount = slot.totalPages,
-        numeralStyle = numeralStyle,
-        isBack = false,
-        modifier = Modifier.width(264.dp).height(352.dp),
-      )
+      Box(modifier = Modifier.fillMaxSize().widthIn(max = 560.dp), contentAlignment = Alignment.Center) {
+        BookCoverArt(
+          diary = slot.diary,
+          pageCount = slot.totalPages,
+          numeralStyle = numeralStyle,
+          isBack = false,
+          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = false),
+        )
+      }
     }
     is ReadingSlot.BackCover -> {
-      BookCoverArt(
-        diary = slot.diary,
-        pageCount = slot.totalPages,
-        numeralStyle = numeralStyle,
-        isBack = true,
-        modifier = Modifier.width(264.dp).height(352.dp),
-      )
+      Box(modifier = Modifier.fillMaxSize().widthIn(max = 560.dp), contentAlignment = Alignment.Center) {
+        BookCoverArt(
+          diary = slot.diary,
+          pageCount = slot.totalPages,
+          numeralStyle = numeralStyle,
+          isBack = true,
+          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = false),
+        )
+      }
     }
     is ReadingSlot.SinglePage -> {
       Box(modifier = Modifier.fillMaxSize().widthIn(max = 560.dp), contentAlignment = Alignment.Center) {

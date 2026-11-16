@@ -80,29 +80,33 @@ object AppUpdateChecker {
   private val adapter = moshi.adapter(UpdateReleaseManifest::class.java)
 
   private const val DEFAULT_GITHUB_REPO = "NafisAhmed19/sankalan--"
+  private val GITHUB_SLUG_REGEX = Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
   private fun extractGithubRepoSlugOrNull(clean: String): String? {
-    if (!clean.startsWith("https://github.com/", ignoreCase = true) &&
-      !clean.startsWith("http://github.com/", ignoreCase = true)
-    ) {
+    if (!clean.startsWith("https://github.com/", ignoreCase = true)) {
       return null
     }
     val path =
       clean
         .substringAfter("github.com/", "")
+        .substringBefore('?')
+        .substringBefore('#')
         .trim('/')
         .removeSuffix(".git")
     val segments = path.split('/').filter { it.isNotBlank() }
-    return if (segments.size == 2) "${segments[0]}/${segments[1]}" else null
+    if (segments.size != 2) return null
+    val candidate = "${segments[0]}/${segments[1]}"
+    return candidate.takeIf { GITHUB_SLUG_REGEX.matches(it) }
   }
 
   fun resolveManifestUrl(repoOrUrl: String): String {
     val clean = repoOrUrl.trim()
     val pastedGithubSlug = extractGithubRepoSlugOrNull(clean)
+    val cleanSlug = clean.trim('/')
     return when {
       pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest/download/version.json"
       clean.startsWith("https://", ignoreCase = true) -> clean
-      clean.contains("/") -> "https://github.com/${clean.trim('/')}/releases/latest/download/version.json"
+      GITHUB_SLUG_REGEX.matches(cleanSlug) -> "https://github.com/$cleanSlug/releases/latest/download/version.json"
       else -> "https://github.com/$DEFAULT_GITHUB_REPO/releases/latest/download/version.json"
     }
   }
@@ -113,6 +117,7 @@ object AppUpdateChecker {
   fun resolveFixedReleaseUrl(repoOrUrl: String): String {
     val clean = repoOrUrl.trim()
     val pastedGithubSlug = extractGithubRepoSlugOrNull(clean)
+    val cleanSlug = clean.trim('/')
     return when {
       pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest"
       clean.startsWith("https://", ignoreCase = true) -> {
@@ -122,7 +127,7 @@ object AppUpdateChecker {
           clean
         }
       }
-      clean.contains("/") -> "https://github.com/${clean.trim('/')}/releases/latest"
+      GITHUB_SLUG_REGEX.matches(cleanSlug) -> "https://github.com/$cleanSlug/releases/latest"
       else -> "https://github.com/$DEFAULT_GITHUB_REPO/releases/latest"
     }
   }
@@ -155,6 +160,9 @@ object AppUpdateChecker {
     if (parsed.downloadUrl.isBlank()) {
       return UpdateCheckResult.Failed("Missing downloadUrl")
     }
+    if (!parsed.downloadUrl.startsWith("https://", ignoreCase = true)) {
+      return UpdateCheckResult.Failed("Untrusted non-HTTPS downloadUrl")
+    }
     return if (parsed.versionCode > currentVersionCode) {
       UpdateCheckResult.UpdateAvailable(parsed)
     } else {
@@ -170,6 +178,9 @@ object AppUpdateChecker {
     withContext(Dispatchers.IO) {
       try {
         val url = URL(resolveManifestUrl(repoOrUrl))
+        if (!url.protocol.equals("https", ignoreCase = true)) {
+          return@withContext UpdateCheckResult.Failed("HTTPS required")
+        }
         val conn =
           (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -181,7 +192,20 @@ object AppUpdateChecker {
         if (code !in 200..299) {
           return@withContext UpdateCheckResult.Failed("HTTP $code")
         }
-        val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        if (!conn.url.protocol.equals("https", ignoreCase = true)) {
+          return@withContext UpdateCheckResult.Failed("HTTPS redirect required")
+        }
+        val body =
+          conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            val buf = CharArray(8192)
+            val sb = StringBuilder()
+            while (sb.length < 262_144) {
+              val n = reader.read(buf)
+              if (n <= 0) break
+              sb.appendRange(buf, 0, n)
+            }
+            sb.toString()
+          }
         parseUpdateManifest(body, currentVersionCode, currentVersionName)
       } catch (t: Throwable) {
         UpdateCheckResult.Failed(t.message ?: "Network error")

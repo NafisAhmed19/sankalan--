@@ -101,7 +101,11 @@ class AppLockManager(private val context: Context) {
   fun verifyPin(rawPin: String): Boolean {
     val salt = prefs.getString(KEY_SALT, null) ?: return false
     val expected = prefs.getString(KEY_HASH, null) ?: return false
-    return PinHasher.hashPin(rawPin, salt) == expected
+    val actual = PinHasher.hashPin(rawPin, salt)
+    return MessageDigest.isEqual(
+      actual.toByteArray(Charsets.UTF_8),
+      expected.toByteArray(Charsets.UTF_8),
+    )
   }
 
   fun clearPin() {

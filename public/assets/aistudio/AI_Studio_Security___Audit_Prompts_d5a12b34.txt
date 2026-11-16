@@ -1,0 +1,26 @@
+====================================================================
+1. POST-PUSH SECURITY & PRODUCTION AUDIT PROMPT
+(অলরেডি গিটহাবে পুশ করা কোড চেক করার জন্য এটি চ্যাটে পেস্ট করুন)
+====================================================================
+
+Perform a thorough security and production-readiness audit on my current codebase that was already pushed to GitHub. Check the entire project and report back clearly on the following:
+
+1. Exposed Secrets Check: Scan all files for any hardcoded API keys (especially Gemini API keys), Firebase credentials, or tokens. Tell me the exact file name and line number if any exist, and refactor them to use environment variables with a .env.example template.
+2. Gitignore Verification: Check if .env, node_modules, and build folders are properly excluded in .gitignore.
+3. PWA & Service Worker Check: Verify if sw.js and manifest.json are properly configured so that new deployments won't get stuck on old browser caches.
+4. Deployment Readiness: Check for any broken imports, missing dependencies, or syntax issues that might cause a build failure on Vercel/Netlify.
+
+Do not assume everything is fine—verify each file strictly and give me a clear 'PASS' or 'FIX NEEDED' status for each point along with the exact fixes.
+
+
+====================================================================
+2. SYSTEM INSTRUCTIONS PROMPT (PREVENTIVE GUARDRAILS)
+(ভবিষ্যতে ভুল এড়াতে এআই স্টুডিওর System Instructions-এ সেট করে রাখুন)
+====================================================================
+
+Before generating or pushing any code updates to GitHub, strictly follow these production-ready rules:
+
+1. Security & Secrets: NEVER hardcode any API keys, Firebase configs, or sensitive credentials directly in the source code. Always use environment variables (e.g., import.meta.env.VITE_... or process.env...) and ensure .env is listed in .gitignore.
+2. PWA Cache Management: Whenever modifying UI, logic, or assets, automatically increment the cache version name inside the Service Worker (sw.js) so users immediately receive the latest deployment without stale cache issues.
+3. Safe Refactoring: Do not delete or break existing working features when adding new ones. Keep the code modular, clean, and optimized for production builds (Vercel/Netlify).
+4. Pre-Push Warning: Explicitly notify me if any new environment variable needs to be added to my hosting dashboard before the build will succeed.

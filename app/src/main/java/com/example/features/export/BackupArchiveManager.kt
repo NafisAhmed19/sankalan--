@@ -78,11 +78,41 @@ object BackupArchiveManager {
     }
   }
 
+  private const val MAX_MANIFEST_BYTES = 16L * 1024L * 1024L // 16 MB
+  private const val MAX_MEDIA_ENTRY_BYTES = 50L * 1024L * 1024L // 50 MB
+
+  private fun readBoundedBytes(input: InputStream, maxBytes: Long): ByteArray {
+    val buffer = ByteArray(8192)
+    val out = java.io.ByteArrayOutputStream()
+    var total = 0L
+    while (true) {
+      val read = input.read(buffer)
+      if (read <= 0) break
+      total += read
+      if (total > maxBytes) error("Archive entry exceeds safe size limit")
+      out.write(buffer, 0, read)
+    }
+    return out.toByteArray()
+  }
+
+  private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long) {
+    val buffer = ByteArray(8192)
+    var total = 0L
+    while (true) {
+      val read = input.read(buffer)
+      if (read <= 0) break
+      total += read
+      if (total > maxBytes) error("Media entry exceeds safe size limit")
+      output.write(buffer, 0, read)
+    }
+  }
+
   fun readFullBackup(
     context: Context,
     inputStream: InputStream,
   ): List<DiaryWithPages> {
     val restoredMediaDir = File(context.filesDir, "restored_media").apply { mkdirs() }
+    val canonicalBase = restoredMediaDir.canonicalPath + File.separator
     var manifestJson: String? = null
     val extractedMediaPaths = mutableMapOf<String, String>() // zipEntryName -> newAbsPath
 
@@ -92,13 +122,22 @@ object BackupArchiveManager {
         if (!entry.isDirectory) {
           when {
             entry.name == ENTRY_MANIFEST -> {
-              manifestJson = zip.readBytes().toString(Charsets.UTF_8)
+              manifestJson = readBoundedBytes(zip, MAX_MANIFEST_BYTES).toString(Charsets.UTF_8)
             }
             entry.name.startsWith("media/") -> {
-              val safeFileName = entry.name.removePrefix("media/").replace("/", "_")
-              val outFile = File(restoredMediaDir, safeFileName)
-              FileOutputStream(outFile).use { zip.copyTo(it) }
-              extractedMediaPaths[entry.name] = outFile.absolutePath
+              val rawName = entry.name.removePrefix("media/")
+              val sanitized =
+                rawName
+                  .replace("\\", "/")
+                  .substringAfterLast('/')
+                  .replace(Regex("[^A-Za-z0-9._-]"), "_")
+              if (sanitized.isNotBlank() && sanitized != "." && sanitized != "..") {
+                val outFile = File(restoredMediaDir, sanitized)
+                if (outFile.canonicalPath.startsWith(canonicalBase)) {
+                  FileOutputStream(outFile).use { copyBounded(zip, it, MAX_MEDIA_ENTRY_BYTES) }
+                  extractedMediaPaths[entry.name] = outFile.absolutePath
+                }
+              }
             }
           }
         }

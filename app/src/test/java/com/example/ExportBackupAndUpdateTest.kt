@@ -18,7 +18,9 @@ import com.example.features.update.UpdateCheckResult
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -266,5 +268,48 @@ class ExportBackupAndUpdateTest {
 
     val badRes = AppUpdateChecker.parseUpdateManifest("{broken json", currentVersionCode = 1, currentVersionName = "1.0")
     assertTrue(badRes is UpdateCheckResult.Failed)
+
+    // Non-HTTPS downloadUrl and HTTP repo links must be rejected cleanly
+    val httpDownloadJson =
+      """
+      {
+        "versionCode": 9,
+        "versionName": "2.0",
+        "downloadUrl": "http://insecure.example.com/sankalan-t.apk"
+      }
+      """.trimIndent()
+    assertTrue(AppUpdateChecker.parseUpdateManifest(httpDownloadJson, 1, "1.0") is UpdateCheckResult.Failed)
+    assertEquals(
+      "https://github.com/NafisAhmed19/sankalan--/releases/latest/download/version.json",
+      AppUpdateChecker.resolveManifestUrl("http://github.com/evil/repo"),
+    )
+  }
+
+  @Test
+  fun `backup restore prevents zip slip path traversal outside restored_media`() {
+    val archiveOut = ByteArrayOutputStream()
+    ZipOutputStream(archiveOut).use { zip ->
+      zip.putNextEntry(ZipEntry("manifest.json"))
+      zip.write(
+        """
+        {
+          "formatVersion": 1,
+          "createdAt": 1700000000000,
+          "appName": "Sankalan-t",
+          "diaries": []
+        }
+        """.trimIndent().toByteArray(Charsets.UTF_8)
+      )
+      zip.closeEntry()
+
+      zip.putNextEntry(ZipEntry("media/../../escaped_payload.txt"))
+      zip.write("MALICIOUS".toByteArray(Charsets.UTF_8))
+      zip.closeEntry()
+    }
+
+    val restored = BackupArchiveManager.readFullBackup(context, ByteArrayInputStream(archiveOut.toByteArray()))
+    assertTrue(restored.isEmpty())
+    assertFalse(File(context.filesDir, "escaped_payload.txt").exists())
+    assertFalse(File(context.filesDir.parentFile, "escaped_payload.txt").exists())
   }
 }

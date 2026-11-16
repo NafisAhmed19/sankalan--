@@ -13,9 +13,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,6 +68,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
@@ -599,12 +603,12 @@ fun BookCoverInspectionDialog(
           }
         }
 
-        // 3D Flippable Book Cover Preview
+        // 3D Flippable Book Cover Preview (matches 0.72 page aspect ratio)
         Box(
           modifier =
             Modifier
-              .width(210.dp)
-              .height(278.dp)
+              .width(216.dp)
+              .aspectRatio(0.72f)
               .graphicsLayer {
                 rotationY = flipAngle
                 cameraDistance = 14f * density
@@ -775,6 +779,8 @@ private fun BookMiniAction(
 
 /**
  * Tactile physical Front / Back cover artwork for Luxury, Artistic, and Minimal styles.
+ * Scales proportionally to match the 0.72f parchment page ratio, with distinct surface textures
+ * and detailed left-side binding stitches / spine craft.
  */
 @Composable
 fun BookCoverArt(
@@ -787,114 +793,511 @@ fun BookCoverArt(
   val strings = LocalStrings.current
   val baseColor = parseHexColor(diary.cover.colorHex, SankalanTokens.Leather)
   val accentColor = parseHexColor(diary.cover.accentHex, SankalanTokens.AntiqueGold)
+  val darkBoard =
+    Color(
+      red = (baseColor.red * 0.64f).coerceIn(0f, 1f),
+      green = (baseColor.green * 0.64f).coerceIn(0f, 1f),
+      blue = (baseColor.blue * 0.64f).coerceIn(0f, 1f),
+    )
+  val lightSheen =
+    Color(
+      red = (baseColor.red + (1f - baseColor.red) * 0.16f).coerceIn(0f, 1f),
+      green = (baseColor.green + (1f - baseColor.green) * 0.16f).coerceIn(0f, 1f),
+      blue = (baseColor.blue + (1f - baseColor.blue) * 0.16f).coerceIn(0f, 1f),
+    )
   val textOnCover =
     if (diary.cover.style == CoverStyle.MINIMAL && baseColor.red > 0.6f) SankalanTokens.Ink
     else SankalanTokens.Cream
+  val threadColor =
+    when {
+      diary.cover.style == CoverStyle.MINIMAL && baseColor.red > 0.6f -> SankalanTokens.Walnut800
+      diary.cover.spineStyle == SpineStyle.STITCHED_CLOTH -> SankalanTokens.Cream
+      else -> accentColor
+    }
+  val coverShape =
+    if (!isBack) {
+      RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp, topStart = 5.dp, bottomStart = 5.dp)
+    } else {
+      RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp, topEnd = 5.dp, bottomEnd = 5.dp)
+    }
 
-  Box(
+  BoxWithConstraints(
     modifier =
       modifier
-        .shadow(10.dp, RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp, topStart = 4.dp, bottomStart = 4.dp))
-        .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp, topStart = 4.dp, bottomStart = 4.dp))
+        .shadow(12.dp, coverShape)
+        .clip(coverShape)
         .background(
           Brush.linearGradient(
-            colors =
-              listOf(
-                baseColor,
-                baseColor.copy(alpha = 0.88f),
-                baseColor.copy(red = (baseColor.red * 0.78f), green = (baseColor.green * 0.78f), blue = (baseColor.blue * 0.78f)),
-              )
+            colors = listOf(lightSheen, baseColor, darkBoard)
           )
         )
         .border(
           width = 1.5.dp,
-          color = accentColor.copy(alpha = 0.7f),
-          shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp, topStart = 4.dp, bottomStart = 4.dp),
+          color = accentColor.copy(alpha = 0.72f),
+          shape = coverShape,
         )
   ) {
-    // Binding spine crease + cover style ornament
+    val scale = (maxWidth / 280.dp).coerceIn(0.62f, 1.45f)
+    val spineWidthDp = maxWidth * 0.135f
+    val boardPadDp = (16f * scale).dp
+
+    // 1. Surface Texture + Left-Side Spine Wrap + Detailed Binding Stitches + Style Ornaments
     Canvas(modifier = Modifier.fillMaxSize()) {
-      // Spine hinge groove on left (or right if back cover)
-      val grooveX = if (isBack) size.width - 14.dp.toPx() else 14.dp.toPx()
+      val spineW = size.width * 0.135f
+      val spineStartX = if (isBack) size.width - spineW else 0f
+      val spineEndX = if (isBack) size.width else spineW
+      val hingeX = if (isBack) spineStartX else spineEndX
+
+      // 1A. Distinct Cover Surface Material Textures across the whole board
+      when (diary.cover.style) {
+        CoverStyle.LUXURY -> {
+          // Deep pebbled Morocco leather grain (staggered pore & specular pebble matrix)
+          val stepX = (9f * scale).dp.toPx().coerceAtLeast(5.dp.toPx())
+          val stepY = (8f * scale).dp.toPx().coerceAtLeast(4.5.dp.toPx())
+          var row = 0
+          var y = stepY * 0.5f
+          while (y < size.height) {
+            var x = if (row % 2 == 0) stepX * 0.4f else stepX * 0.9f
+            while (x < size.width) {
+              drawCircle(
+                color = Color.Black.copy(alpha = 0.14f),
+                radius = (1.35f * scale).dp.toPx().coerceAtLeast(0.8.dp.toPx()),
+                center = Offset(x, y),
+              )
+              drawCircle(
+                color = Color.White.copy(alpha = 0.055f),
+                radius = (0.95f * scale).dp.toPx().coerceAtLeast(0.6.dp.toPx()),
+                center = Offset(x - 1.dp.toPx(), y - 1.dp.toPx()),
+              )
+              x += stepX
+            }
+            y += stepY
+            row++
+          }
+        }
+        CoverStyle.ARTISTIC -> {
+          // Tactile cross-hatched woven linen / artist canvas texture
+          val weaveStep = (5.5f * scale).dp.toPx().coerceAtLeast(3.8.dp.toPx())
+          var y = weaveStep
+          var rowIdx = 0
+          while (y < size.height) {
+            drawLine(
+              color = if (rowIdx % 2 == 0) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.09f),
+              start = Offset(0f, y),
+              end = Offset(size.width, y),
+              strokeWidth = (0.9f * scale).dp.toPx(),
+            )
+            y += weaveStep
+            rowIdx++
+          }
+          var x = weaveStep
+          var colIdx = 0
+          while (x < size.width) {
+            drawLine(
+              color = if (colIdx % 2 == 0) Color.White.copy(alpha = 0.055f) else Color.Black.copy(alpha = 0.075f),
+              start = Offset(x, 0f),
+              end = Offset(x, size.height),
+              strokeWidth = (0.85f * scale).dp.toPx(),
+            )
+            x += weaveStep
+            colIdx++
+          }
+        }
+        CoverStyle.MINIMAL -> {
+          // Crisp brushed buckram / fine laid paperboard texture
+          val ribStep = (4.2f * scale).dp.toPx().coerceAtLeast(3.dp.toPx())
+          var y = ribStep
+          while (y < size.height) {
+            drawLine(
+              color = Color.Black.copy(alpha = 0.06f),
+              start = Offset(0f, y),
+              end = Offset(size.width, y),
+              strokeWidth = (0.75f * scale).dp.toPx(),
+            )
+            y += ribStep
+          }
+        }
+      }
+
+      // 1B. Sculpted 3D Spine Barrel Wrap + French-Joint Hinge Valley (Left edge on front cover)
+      drawRect(
+        brush =
+          Brush.horizontalGradient(
+            colors =
+              if (!isBack) {
+                listOf(
+                  Color.Black.copy(alpha = 0.34f),
+                  Color.White.copy(alpha = 0.12f),
+                  Color.Black.copy(alpha = 0.16f),
+                  Color.Black.copy(alpha = 0.44f),
+                )
+              } else {
+                listOf(
+                  Color.Black.copy(alpha = 0.44f),
+                  Color.Black.copy(alpha = 0.16f),
+                  Color.White.copy(alpha = 0.12f),
+                  Color.Black.copy(alpha = 0.34f),
+                )
+              },
+            startX = spineStartX,
+            endX = spineEndX,
+          ),
+        topLeft = Offset(spineStartX, 0f),
+        size = Size(spineW, size.height),
+      )
+
+      // Top & Bottom Woven Headband / Tailband Strips on Spine
+      val bandH = (5f * scale).dp.toPx().coerceAtLeast(3.dp.toPx())
+      drawRect(
+        color = accentColor.copy(alpha = 0.85f),
+        topLeft = Offset(spineStartX + spineW * 0.08f, 0f),
+        size = Size(spineW * 0.84f, bandH),
+      )
+      drawRect(
+        color = accentColor.copy(alpha = 0.85f),
+        topLeft = Offset(spineStartX + spineW * 0.08f, size.height - bandH),
+        size = Size(spineW * 0.84f, bandH),
+      )
+
+      // Deep French-joint Hinge Groove & Catch-light Highlight
+      val creaseOffset = if (isBack) 2.dp.toPx() else -2.dp.toPx()
       drawLine(
-        color = Color.Black.copy(alpha = 0.32f),
-        start = Offset(grooveX, 0f),
-        end = Offset(grooveX, size.height),
-        strokeWidth = 2.dp.toPx(),
+        color = Color.Black.copy(alpha = 0.55f),
+        start = Offset(hingeX, 0f),
+        end = Offset(hingeX, size.height),
+        strokeWidth = (2.6f * scale).dp.toPx(),
       )
       drawLine(
-        color = accentColor.copy(alpha = 0.25f),
-        start = Offset(grooveX + 2.dp.toPx(), 0f),
-        end = Offset(grooveX + 2.dp.toPx(), size.height),
-        strokeWidth = 1.dp.toPx(),
+        color = accentColor.copy(alpha = 0.36f),
+        start = Offset(hingeX - creaseOffset, 0f),
+        end = Offset(hingeX - creaseOffset, size.height),
+        strokeWidth = (1.1f * scale).dp.toPx(),
       )
+
+      // 1C. Detailed Binding Stitches & Raised Spine Hubs along the Left Spine Zone
+      val outerEdgeX = if (isBack) spineEndX - spineW * 0.16f else spineStartX + spineW * 0.16f
+      val innerStitchX = if (isBack) hingeX + spineW * 0.24f else hingeX - spineW * 0.24f
+      val boardSeamX = if (isBack) hingeX - (7f * scale).dp.toPx() else hingeX + (7f * scale).dp.toPx()
+
+      when (diary.cover.spineStyle) {
+        SpineStyle.RIBBED_GOLD -> {
+          // 5 Sculpted Raised Leather Hubs + Gold Flanking Fillets across spine strip
+          val ribFractions = listOf(0.14f, 0.32f, 0.50f, 0.68f, 0.86f)
+          val ribHalfH = (4.2f * scale).dp.toPx()
+          ribFractions.forEach { frac ->
+            val ry = size.height * frac
+            drawRect(
+              brush =
+                Brush.verticalGradient(
+                  colors =
+                    listOf(
+                      Color.Black.copy(alpha = 0.45f),
+                      Color.White.copy(alpha = 0.20f),
+                      baseColor.copy(alpha = 0.9f),
+                      Color.Black.copy(alpha = 0.50f),
+                    ),
+                  startY = ry - ribHalfH,
+                  endY = ry + ribHalfH,
+                ),
+              topLeft = Offset(spineStartX + 2.dp.toPx(), ry - ribHalfH),
+              size = Size(spineW - 4.dp.toPx(), ribHalfH * 2f),
+            )
+            // Twin gold fillets framing each raised rib
+            drawLine(
+              color = accentColor.copy(alpha = 0.88f),
+              start = Offset(spineStartX + 3.dp.toPx(), ry - ribHalfH),
+              end = Offset(spineEndX - 3.dp.toPx(), ry - ribHalfH),
+              strokeWidth = (1.1f * scale).dp.toPx(),
+            )
+            drawLine(
+              color = accentColor.copy(alpha = 0.88f),
+              start = Offset(spineStartX + 3.dp.toPx(), ry + ribHalfH),
+              end = Offset(spineEndX - 3.dp.toPx(), ry + ribHalfH),
+              strokeWidth = (1.1f * scale).dp.toPx(),
+            )
+          }
+
+          // Crisp Vertical Waxed-Gold Saddle Stitches along the French-joint hinge seam
+          val stitchPitch = (11f * scale).dp.toPx().coerceAtLeast(7.dp.toPx())
+          val stitchLen = stitchPitch * 0.54f
+          var sy = bandH * 2.2f
+          while (sy + stitchLen < size.height - bandH * 2.2f) {
+            drawCircle(color = Color.Black.copy(alpha = 0.65f), radius = (1.3f * scale).dp.toPx(), center = Offset(boardSeamX, sy))
+            drawCircle(color = Color.Black.copy(alpha = 0.65f), radius = (1.3f * scale).dp.toPx(), center = Offset(boardSeamX, sy + stitchLen))
+            drawLine(
+              color = Color.Black.copy(alpha = 0.45f),
+              start = Offset(boardSeamX + 0.8.dp.toPx(), sy + 0.8.dp.toPx()),
+              end = Offset(boardSeamX + 0.8.dp.toPx(), sy + stitchLen + 0.8.dp.toPx()),
+              strokeWidth = (1.7f * scale).dp.toPx(),
+              cap = StrokeCap.Round,
+            )
+            drawLine(
+              color = threadColor.copy(alpha = 0.94f),
+              start = Offset(boardSeamX, sy),
+              end = Offset(boardSeamX, sy + stitchLen),
+              strokeWidth = (1.5f * scale).dp.toPx(),
+              cap = StrokeCap.Round,
+            )
+            sy += stitchPitch
+          }
+        }
+        SpineStyle.SMOOTH_LEATHER -> {
+          // Double Parallel Hand-Sewn Waxed-Thread Saddle Stitches along left edge & board hinge seam
+          val stitchPitch = (10f * scale).dp.toPx().coerceAtLeast(6.5.dp.toPx())
+          val stitchLen = stitchPitch * 0.56f
+          var sy = bandH * 2f
+          while (sy + stitchLen < size.height - bandH * 2f) {
+            listOf(innerStitchX, boardSeamX).forEach { sx ->
+              drawCircle(color = Color.Black.copy(alpha = 0.68f), radius = (1.35f * scale).dp.toPx(), center = Offset(sx, sy))
+              drawCircle(color = Color.Black.copy(alpha = 0.68f), radius = (1.35f * scale).dp.toPx(), center = Offset(sx, sy + stitchLen))
+              drawLine(
+                color = Color.Black.copy(alpha = 0.45f),
+                start = Offset(sx + 0.8.dp.toPx(), sy + 0.8.dp.toPx()),
+                end = Offset(sx + 0.8.dp.toPx(), sy + stitchLen + 0.8.dp.toPx()),
+                strokeWidth = (1.8f * scale).dp.toPx(),
+                cap = StrokeCap.Round,
+              )
+              drawLine(
+                color = threadColor.copy(alpha = 0.92f),
+                start = Offset(sx, sy),
+                end = Offset(sx, sy + stitchLen),
+                strokeWidth = (1.55f * scale).dp.toPx(),
+                cap = StrokeCap.Round,
+              )
+            }
+            sy += stitchPitch
+          }
+        }
+        SpineStyle.STITCHED_CLOTH -> {
+          // Prominent Coptic / Japanese Exposed Cross-Stitch ('X' + Edge Wrap Loops + Eyelets)
+          val stationCount = 10
+          val usableTop = size.height * 0.08f
+          val usableBottom = size.height * 0.92f
+          val step = (usableBottom - usableTop) / (stationCount - 1)
+          val halfX = step * 0.24f
+          val holeR = (1.8f * scale).dp.toPx().coerceAtLeast(1.3f)
+          val threadW = (1.9f * scale).dp.toPx().coerceAtLeast(1.4f)
+
+          // Vertical kettle-stitch linkage connecting stations along board seam
+          drawLine(
+            color = threadColor.copy(alpha = 0.58f),
+            start = Offset(boardSeamX, usableTop),
+            end = Offset(boardSeamX, usableBottom),
+            strokeWidth = threadW * 0.72f,
+          )
+
+          for (i in 0 until stationCount) {
+            val cy = usableTop + i * step
+            val topY = cy - halfX
+            val botY = cy + halfX
+            val spanStart = if (isBack) innerStitchX else outerEdgeX
+            val spanEnd = if (isBack) outerEdgeX else innerStitchX
+
+            // Dark punched awl eyelets
+            listOf(
+              Offset(spanStart, topY),
+              Offset(spanStart, botY),
+              Offset(spanEnd, topY),
+              Offset(spanEnd, botY),
+              Offset(boardSeamX, cy),
+            ).forEach { pt ->
+              drawCircle(color = Color.Black.copy(alpha = 0.78f), radius = holeR, center = pt)
+            }
+
+            // Edge-wrapping horizontal cord gripping spine outer border
+            val borderX = if (isBack) size.width else 0f
+            drawLine(
+              color = threadColor.copy(alpha = 0.92f),
+              start = Offset(borderX, cy),
+              end = Offset(boardSeamX, cy),
+              strokeWidth = threadW,
+              cap = StrokeCap.Round,
+            )
+
+            // Crossed 'X' binding thread shadow + highlight
+            drawLine(
+              color = Color.Black.copy(alpha = 0.45f),
+              start = Offset(spanStart, topY + 1.dp.toPx()),
+              end = Offset(spanEnd, botY + 1.dp.toPx()),
+              strokeWidth = threadW * 1.1f,
+              cap = StrokeCap.Round,
+            )
+            drawLine(
+              color = Color.Black.copy(alpha = 0.45f),
+              start = Offset(spanStart, botY + 1.dp.toPx()),
+              end = Offset(spanEnd, topY + 1.dp.toPx()),
+              strokeWidth = threadW * 1.1f,
+              cap = StrokeCap.Round,
+            )
+            drawLine(
+              color = threadColor.copy(alpha = 0.96f),
+              start = Offset(spanStart, topY),
+              end = Offset(spanEnd, botY),
+              strokeWidth = threadW,
+              cap = StrokeCap.Round,
+            )
+            drawLine(
+              color = threadColor.copy(alpha = 0.96f),
+              start = Offset(spanStart, botY),
+              end = Offset(spanEnd, topY),
+              strokeWidth = threadW,
+              cap = StrokeCap.Round,
+            )
+          }
+        }
+      }
+
+      // 1D. Cover Style Borders, Brass Corners & Artistic Artwork inside the Cover Board
+      val boardLeft = if (isBack) (12f * scale).dp.toPx() else spineW + (12f * scale).dp.toPx()
+      val boardRight = if (isBack) size.width - spineW - (12f * scale).dp.toPx() else size.width - (12f * scale).dp.toPx()
+      val boardTop = (14f * scale).dp.toPx()
+      val boardBottom = size.height - (14f * scale).dp.toPx()
+      val boardW = (boardRight - boardLeft).coerceAtLeast(24f)
+      val boardH = (boardBottom - boardTop).coerceAtLeast(24f)
 
       when (diary.cover.style) {
         CoverStyle.LUXURY -> {
-          // Gold foil inner frame + corner brackets
-          val pad = 16.dp.toPx()
+          // Outer & inner double gold-foil frame
           drawRoundRect(
-            color = accentColor.copy(alpha = 0.72f),
-            topLeft = Offset(pad + (if (isBack) 0f else 8.dp.toPx()), pad),
-            size = Size(size.width - pad * 2 - 8.dp.toPx(), size.height - pad * 2),
-            cornerRadius = CornerRadius(6.dp.toPx()),
-            style = Stroke(width = 1.2.dp.toPx()),
+            color = accentColor.copy(alpha = 0.80f),
+            topLeft = Offset(boardLeft, boardTop),
+            size = Size(boardW, boardH),
+            cornerRadius = CornerRadius((6f * scale).dp.toPx()),
+            style = Stroke(width = (1.3f * scale).dp.toPx()),
+          )
+          val inset = (5f * scale).dp.toPx()
+          drawRoundRect(
+            color = accentColor.copy(alpha = 0.48f),
+            topLeft = Offset(boardLeft + inset, boardTop + inset),
+            size = Size((boardW - inset * 2).coerceAtLeast(10f), (boardH - inset * 2).coerceAtLeast(10f)),
+            cornerRadius = CornerRadius((4f * scale).dp.toPx()),
+            style = Stroke(width = (0.8f * scale).dp.toPx()),
+          )
+
+          // Brass metal corner protectors on outer fore-edge corners
+          val capSize = (20f * scale).dp.toPx().coerceAtLeast(12f)
+          val outerX = if (isBack) 0f else size.width
+          val capSign = if (isBack) 1f else -1f
+          val topCorner =
+            Path().apply {
+              moveTo(outerX, 0f)
+              lineTo(outerX + capSign * capSize, 0f)
+              lineTo(outerX, capSize)
+              close()
+            }
+          val botCorner =
+            Path().apply {
+              moveTo(outerX, size.height)
+              lineTo(outerX + capSign * capSize, size.height)
+              lineTo(outerX, size.height - capSize)
+              close()
+            }
+          drawPath(topCorner, color = accentColor.copy(alpha = 0.88f))
+          drawPath(botCorner, color = accentColor.copy(alpha = 0.88f))
+
+          // Center gilded crest oval ring
+          drawOval(
+            color = accentColor.copy(alpha = 0.28f),
+            topLeft = Offset(boardLeft + boardW * 0.14f, boardTop + boardH * 0.25f),
+            size = Size(boardW * 0.72f, boardH * 0.48f),
+            style = Stroke(width = (1.1f * scale).dp.toPx()),
           )
         }
         CoverStyle.ARTISTIC -> {
-          // Subtle botanical leaf arcs & warm paper collage band
+          // Layered watercolor blotches + diagonal warm kraft sash + botanical leaf stem
           drawCircle(
-            color = accentColor.copy(alpha = 0.16f),
-            radius = size.width * 0.32f,
-            center = Offset(size.width * 0.65f, size.height * 0.30f),
+            color = accentColor.copy(alpha = 0.22f),
+            radius = boardW * 0.38f,
+            center = Offset(boardLeft + boardW * 0.68f, boardTop + boardH * 0.26f),
           )
           drawCircle(
-            color = SankalanTokens.Terracotta.copy(alpha = 0.20f),
-            radius = size.width * 0.22f,
-            center = Offset(size.width * 0.35f, size.height * 0.72f),
+            color = SankalanTokens.Terracotta.copy(alpha = 0.24f),
+            radius = boardW * 0.28f,
+            center = Offset(boardLeft + boardW * 0.30f, boardTop + boardH * 0.76f),
+          )
+          // Fine botanical vine & leaf linework along bottom-right
+          val stemPath =
+            Path().apply {
+              moveTo(boardLeft + boardW * 0.12f, boardTop + boardH * 0.88f)
+              quadraticTo(
+                boardLeft + boardW * 0.50f,
+                boardTop + boardH * 0.78f,
+                boardLeft + boardW * 0.88f,
+                boardTop + boardH * 0.62f,
+              )
+            }
+          drawPath(
+            path = stemPath,
+            color = accentColor.copy(alpha = 0.65f),
+            style = Stroke(width = (1.2f * scale).dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+          )
+          drawRoundRect(
+            color = accentColor.copy(alpha = 0.42f),
+            topLeft = Offset(boardLeft, boardTop),
+            size = Size(boardW, boardH),
+            cornerRadius = CornerRadius((8f * scale).dp.toPx()),
+            style = Stroke(width = (1.0f * scale).dp.toPx()),
           )
         }
         CoverStyle.MINIMAL -> {
-          // Restrained single hairline rule
+          // Blind-debossed architectural frame + twin clean hairline dividers
+          drawRoundRect(
+            color = Color.Black.copy(alpha = 0.18f),
+            topLeft = Offset(boardLeft + 2.dp.toPx(), boardTop + 2.dp.toPx()),
+            size = Size(boardW - 4.dp.toPx(), boardH - 4.dp.toPx()),
+            cornerRadius = CornerRadius((4f * scale).dp.toPx()),
+            style = Stroke(width = (1.1f * scale).dp.toPx()),
+          )
           drawLine(
-            color = accentColor.copy(alpha = 0.55f),
-            start = Offset(28.dp.toPx(), size.height * 0.48f),
-            end = Offset(size.width - 28.dp.toPx(), size.height * 0.48f),
-            strokeWidth = 1.dp.toPx(),
+            color = accentColor.copy(alpha = 0.60f),
+            start = Offset(boardLeft + boardW * 0.12f, size.height * 0.49f),
+            end = Offset(boardRight - boardW * 0.12f, size.height * 0.49f),
+            strokeWidth = (1.1f * scale).dp.toPx(),
           )
         }
       }
     }
 
+    // 2. Proportional Cover Typography & Monogram Crest
     Column(
-      modifier = Modifier.fillMaxSize().padding(start = 24.dp, end = 18.dp, top = 22.dp, bottom = 18.dp),
+      modifier =
+        Modifier
+          .fillMaxSize()
+          .padding(
+            start = if (!isBack) spineWidthDp + boardPadDp else boardPadDp,
+            end = if (isBack) spineWidthDp + boardPadDp else boardPadDp,
+            top = (22f * scale).dp,
+            bottom = (18f * scale).dp,
+          ),
       verticalArrangement = Arrangement.SpaceBetween,
       horizontalAlignment = Alignment.CenterHorizontally,
     ) {
       if (!isBack) {
-        // Monogram crest
         Surface(
           shape = RoundedCornerShape(50),
-          color = Color.Black.copy(alpha = 0.22f),
-          border = BorderStroke(1.dp, accentColor.copy(alpha = 0.7f)),
+          color = Color.Black.copy(alpha = 0.26f),
+          border = BorderStroke((1.1f * scale).dp, accentColor.copy(alpha = 0.78f)),
         ) {
           Text(
             text = diary.cover.monogram,
             fontFamily = NotoSerifBengaliFontFamily,
             fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
+            fontSize = (18f * scale).sp,
             color = accentColor,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = (12f * scale).dp, vertical = (4f * scale).dp),
           )
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy((6f * scale).dp),
+        ) {
           Text(
             text = diary.title,
             fontFamily = PlayfairDisplayFontFamily,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 17.sp,
-            lineHeight = 23.sp,
+            fontSize = (18f * scale).sp,
+            lineHeight = (24f * scale).sp,
             color = textOnCover,
             textAlign = TextAlign.Center,
             maxLines = 3,
@@ -904,9 +1307,9 @@ fun BookCoverArt(
             Text(
               text = diary.description,
               style = MaterialTheme.typography.bodyMedium,
-              fontSize = 11.sp,
-              lineHeight = 16.sp,
-              color = textOnCover.copy(alpha = 0.76f),
+              fontSize = (11.5f * scale).sp,
+              lineHeight = (16f * scale).sp,
+              color = textOnCover.copy(alpha = 0.80f),
               textAlign = TextAlign.Center,
               maxLines = 2,
               overflow = TextOverflow.Ellipsis,
@@ -917,30 +1320,35 @@ fun BookCoverArt(
         Text(
           text = "${formatNumber(pageCount, numeralStyle)} ${strings.pagesUnit}",
           style = MaterialTheme.typography.labelSmall,
+          fontSize = (11f * scale).sp,
           color = accentColor,
         )
       } else {
-        // Back cover colophon
-        Spacer(modifier = Modifier.height(8.dp))
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spacer(modifier = Modifier.height((8f * scale).dp))
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy((8f * scale).dp),
+        ) {
           Text(
             text = strings.brandLogoWordmark,
             fontFamily = PlayfairDisplayFontFamily,
-            fontSize = 16.sp,
+            fontSize = (17f * scale).sp,
             color = accentColor,
           )
           Text(
             text = strings.tagline,
             style = MaterialTheme.typography.bodyMedium,
-            fontSize = 11.sp,
-            color = textOnCover.copy(alpha = 0.78f),
+            fontSize = (11.5f * scale).sp,
+            lineHeight = (16f * scale).sp,
+            color = textOnCover.copy(alpha = 0.82f),
             textAlign = TextAlign.Center,
           )
         }
         Text(
           text = "NRST.tech",
           style = MaterialTheme.typography.labelSmall,
-          color = accentColor.copy(alpha = 0.7f),
+          fontSize = (11f * scale).sp,
+          color = accentColor.copy(alpha = 0.78f),
         )
       }
     }
@@ -977,7 +1385,7 @@ fun BookGridCard(
         pageCount = diaryWithPages.pages.size,
         numeralStyle = numeralStyle,
         isBack = false,
-        modifier = Modifier.width(126.dp).height(166.dp),
+        modifier = Modifier.width(126.dp).aspectRatio(0.72f),
       )
       Text(
         text = diary.title,

@@ -13,6 +13,7 @@ import com.example.core.model.Page
 import com.example.core.model.ReadingLayout
 import com.example.features.memorylane.MemoryLaneCurator
 import com.example.features.memorylane.MemoryLaneReason
+import com.example.features.reading.PageTurnPhysics
 import com.example.features.reading.ReadingSlot
 import com.example.features.reading.ReadingSlotBuilder
 import kotlinx.coroutines.flow.first
@@ -208,5 +209,46 @@ class MemoryLaneAndReadingModeTest {
     val resetPage = repository.allDiariesFlow.first().first().pages.first { it.id == deletedTargetId }
     assertTrue(resetPage.elements.isEmpty())
     assertFalse(resetPage.pinned)
+  }
+
+  @Test
+  fun `page turn physics accepts diagonal corner drags and flips on distance or velocity`() {
+    // Diagonal corner drag near edge/corner must be accepted even if vertical delta is sizable
+    assertTrue(PageTurnPhysics.isPageTurnDragSlope(dx = -28f, dy = -60f, startedNearCornerOrEdge = true))
+    assertTrue(PageTurnPhysics.isPageTurnDragSlope(dx = 40f, dy = 20f, startedNearCornerOrEdge = false))
+    assertFalse(PageTurnPhysics.isPageTurnDragSlope(dx = 6f, dy = 80f, startedNearCornerOrEdge = false))
+
+    // Elastic resistance when trying to drag past FrontCover (index 0) backward
+    val blockedBack =
+      PageTurnPhysics.computeDragProgress(
+        dragDeltaPx = 300f,
+        stageWidthPx = 400f,
+        currentProgress = 0f,
+        canFlipForward = true,
+        canFlipBackward = false,
+      )
+    assertTrue(blockedBack in 0f..0.20f)
+
+    // Unblocked left-drag advances progress smoothly
+    val forwardProgress =
+      PageTurnPhysics.computeDragProgress(
+        dragDeltaPx = -120f,
+        stageWidthPx = 400f,
+        currentProgress = 0f,
+        canFlipForward = true,
+        canFlipBackward = true,
+      )
+    assertTrue(forwardProgress < -0.25f)
+
+    // Distance flip forward & backward
+    assertEquals(2, PageTurnPhysics.resolveSwipeOutcome(progress = -0.20f, velocityX = 0f, currentSlotIndex = 1, lastSlotIndex = 5))
+    assertEquals(0, PageTurnPhysics.resolveSwipeOutcome(progress = 0.20f, velocityX = 0f, currentSlotIndex = 1, lastSlotIndex = 5))
+
+    // Quick flick flips even at small drag progress
+    assertEquals(2, PageTurnPhysics.resolveSwipeOutcome(progress = -0.06f, velocityX = -520f, currentSlotIndex = 1, lastSlotIndex = 5))
+    assertEquals(0, PageTurnPhysics.resolveSwipeOutcome(progress = 0.06f, velocityX = 520f, currentSlotIndex = 1, lastSlotIndex = 5))
+
+    // Tiny accidental nudge stays on current page
+    assertEquals(1, PageTurnPhysics.resolveSwipeOutcome(progress = -0.05f, velocityX = -50f, currentSlotIndex = 1, lastSlotIndex = 5))
   }
 }

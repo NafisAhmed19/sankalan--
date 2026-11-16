@@ -98,3 +98,55 @@ object ReadingSlotBuilder {
       null -> null
     }
 }
+
+/**
+ * Pure physics & gesture threshold helpers for corner/edge finger page-turning.
+ */
+object PageTurnPhysics {
+  fun isPageTurnDragSlope(
+    dx: Float,
+    dy: Float,
+    startedNearCornerOrEdge: Boolean,
+  ): Boolean {
+    val absDx = kotlin.math.abs(dx)
+    val absDy = kotlin.math.abs(dy)
+    if (absDx <= 1.5f) return false
+    // Corner/side drags frequently move diagonally; allow steeper diagonal strokes near edges/corners.
+    val slopeRatio = if (startedNearCornerOrEdge) 0.35f else 0.55f
+    return absDx >= absDy * slopeRatio
+  }
+
+  fun computeDragProgress(
+    dragDeltaPx: Float,
+    stageWidthPx: Float,
+    currentProgress: Float,
+    canFlipForward: Boolean,
+    canFlipBackward: Boolean,
+  ): Float {
+    val normDelta = dragDeltaPx / (stageWidthPx.coerceAtLeast(1f) * 0.80f)
+    val raw = currentProgress + normDelta
+    return when {
+      raw < 0f && !canFlipForward -> (currentProgress + normDelta * 0.22f).coerceIn(-0.20f, 0.20f)
+      raw > 0f && !canFlipBackward -> (currentProgress + normDelta * 0.22f).coerceIn(-0.20f, 0.20f)
+      else -> raw.coerceIn(-0.98f, 0.98f)
+    }
+  }
+
+  fun resolveSwipeOutcome(
+    progress: Float,
+    velocityX: Float,
+    currentSlotIndex: Int,
+    lastSlotIndex: Int,
+  ): Int {
+    if (lastSlotIndex <= 0) return currentSlotIndex
+    val clampedCur = currentSlotIndex.coerceIn(0, lastSlotIndex)
+    return when {
+      clampedCur < lastSlotIndex &&
+        (progress <= -0.16f || (progress <= -0.04f && velocityX <= -360f)) -> clampedCur + 1
+      clampedCur > 0 &&
+        (progress >= 0.16f || (progress >= 0.04f && velocityX >= 360f)) -> clampedCur - 1
+      else -> clampedCur
+    }
+  }
+}
+
