@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -278,6 +279,7 @@ fun StudioAssetPackPanel(
   onInsertAsset: (StudioAsset) -> Unit,
   onInsertUpload: (UserUploadedAsset) -> Unit,
   onPickUserUpload: () -> Unit,
+  onEditUpload: (UserUploadedAsset) -> Unit = {},
 ) {
   val strings = LocalStrings.current
   val palette = LocalSankalanPalette.current
@@ -345,6 +347,19 @@ fun StudioAssetPackPanel(
               horizontalAlignment = Alignment.CenterHorizontally,
               verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+              Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(
+                  onClick = { onEditUpload(upload) },
+                  modifier = Modifier.size(24.dp),
+                ) {
+                  Icon(
+                    Icons.Outlined.Edit,
+                    contentDescription = strings.stickerEditExistingBtn,
+                    tint = palette.goldAccent,
+                    modifier = Modifier.size(14.dp),
+                  )
+                }
+              }
               Box(modifier = Modifier.size(56.dp)) {
                 StudioAssetGraphic(
                   assetId = upload.id,

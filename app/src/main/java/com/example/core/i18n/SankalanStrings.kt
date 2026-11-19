@@ -414,12 +414,43 @@ interface SankalanStrings {
   val feedbackEmptyLabel: String
   val feedbackDeleteBtn: String
   val feedbackYouBadge: String
+
+  // Smart Sticker Upload, Crop, Object Cutout & Die-Cut Border Editor
+  val stickerEditorTitle: String
+  val stickerEditorSubtitle: String
+  val stickerTitleLabel: String
+  val stickerTitleHint: String
+  val stickerTabCrop: String
+  val stickerTabCutout: String
+  val stickerTabBorder: String
+  val stickerAspectFree: String
+  val stickerAspectSquare: String
+  val stickerRotate90: String
+  val stickerResetCrop: String
+  val stickerModeAuto: String
+  val stickerModeLasso: String
+  val stickerModeOriginal: String
+  val stickerBrushKeep: String
+  val stickerBrushErase: String
+  val stickerUndoStroke: String
+  val stickerClearLasso: String
+  val stickerSensitivityLabel: String
+  val stickerLassoGuideHint: String
+  val stickerAutoGuideHint: String
+  val stickerBorderToggleLabel: String
+  val stickerBorderThicknessLabel: String
+  val stickerBorderColorLabel: String
+  val stickerBorderGoldTrimLabel: String
+  val stickerBorderShadowLabel: String
+  val stickerSaveBtn: String
+  val stickerSavingBtn: String
+  val stickerEditExistingBtn: String
 }
 
 object StringsEn : SankalanStrings {
   override val brandName = "Sankalan-t"
   override val brandLogoWordmark = "Sankalan-ৎ"
-  override val tagline = "With Every Imprint of Your Life's Journey."
+  override val tagline = "With the Memories of Your Life."
   override val welcomeSkip = "Skip"
   override val welcomeTapHint = "Tap anywhere on the water to enter"
   override val welcomeLanguagePrompt = "Choose your interface language"
@@ -749,7 +780,7 @@ object StringsEn : SankalanStrings {
   override val updateCopyManifestBtn = "Copy version.json Template"
   override val updateManifestCopiedMsg = "version.json template copied!"
 
-  override val homeHeroTagline = "With Every Imprint of Your Life's Journey."
+  override val homeHeroTagline = "With the Memories of Your Life."
   override val editorInlineTextHint = "Tap paper & type directly here…"
   override val editorQuickOrbLabel = "Quick Tools"
   override val editorQuickOrbPen = "Pen / Stylus"
@@ -811,12 +842,42 @@ object StringsEn : SankalanStrings {
   override val feedbackEmptyLabel = "No comments yet — be the first to leave feedback above!"
   override val feedbackDeleteBtn = "Delete"
   override val feedbackYouBadge = "You"
+
+  override val stickerEditorTitle = "Smart Sticker Studio"
+  override val stickerEditorSubtitle = "Crop, trace an object roughly with your finger, and let smart cutout + border polish it."
+  override val stickerTitleLabel = "Sticker Name"
+  override val stickerTitleHint = "e.g., Pressed Rose Sticker"
+  override val stickerTabCrop = "1. Crop & Turn"
+  override val stickerTabCutout = "2. Object Cutout"
+  override val stickerTabBorder = "3. Sticker Border"
+  override val stickerAspectFree = "Free"
+  override val stickerAspectSquare = "1:1 Square"
+  override val stickerRotate90 = "Rotate 90°"
+  override val stickerResetCrop = "Reset Crop"
+  override val stickerModeAuto = "Auto Smart"
+  override val stickerModeLasso = "Finger Lasso"
+  override val stickerModeOriginal = "Full Crop"
+  override val stickerBrushKeep = "+ Keep"
+  override val stickerBrushErase = "− Erase"
+  override val stickerUndoStroke = "Undo"
+  override val stickerClearLasso = "Clear Outline"
+  override val stickerSensitivityLabel = "Smart Edge Tightness"
+  override val stickerLassoGuideHint = "Draw roughly around the object with your finger — smart edge-snap refines the contour automatically."
+  override val stickerAutoGuideHint = "Automatically isolates the central object. Use + Keep / − Erase strokes to guide tricky corners."
+  override val stickerBorderToggleLabel = "Die-Cut Sticker Border"
+  override val stickerBorderThicknessLabel = "Border Thickness"
+  override val stickerBorderColorLabel = "Border Color"
+  override val stickerBorderGoldTrimLabel = "Antique Gold Hairline Trim"
+  override val stickerBorderShadowLabel = "Soft Paper Shadow"
+  override val stickerSaveBtn = "Save Sticker"
+  override val stickerSavingBtn = "Refining…"
+  override val stickerEditExistingBtn = "Edit Sticker"
 }
 
 object StringsBnBd : SankalanStrings {
   override val brandName = "সংকলন-ৎ"
   override val brandLogoWordmark = "Sankalan-ৎ"
-  override val tagline = "জীবন চলার প্রতিটি ছাপের সাথে।"
+  override val tagline = "আপনার জীবনের স্মৃতির সাথে।"
   override val welcomeSkip = "এড়িয়ে যান"
   override val welcomeTapHint = "প্রবেশ করতে পানির ওপর যেকোনো জায়গায় স্পর্শ করুন"
   override val welcomeLanguagePrompt = "অ্যাপের ভাষা বেছে নিন"
@@ -1047,7 +1108,7 @@ object StringsBnBd : SankalanStrings {
   override val themePaletteCaption = "ভিন্টেজ ডার্ক ওয়ালনাট ও অ্যান্টিক গোল্ড হলো মূল ডিফল্ট থিম।"
   override val typographyPreviewTitle = "বাংলা ও ইংরেজি ফন্ট প্রিভিউ"
   override val typographyBanglaHeadingLabel = "বাংলা শিরোনাম · Noto Serif Bengali"
-  override val typographyBanglaHeadingSample = "সংকলন-ৎ — জীবন চলার প্রতিটি ছাপের সাথে"
+  override val typographyBanglaHeadingSample = "সংকলন-ৎ — আপনার জীবনের স্মৃতির সাথে"
   override val typographyBanglaBodyLabel = "বাংলা অনুচ্ছেদ ও যুক্তাক্ষর পরীক্ষা · Noto Sans Bengali"
   override val typographyBanglaBodySample = "সংকলন, স্মৃতি, শ্রদ্ধা, প্রিয়, স্বাধীনতা, দৃষ্টান্ত, কৃতজ্ঞতা, বইয়ের পাতা — Mixed English & বাংলা 2026।"
   override val typographyEnglishHeadingLabel = "ইংরেজি শিরোনাম · Playfair Display"
@@ -1146,7 +1207,7 @@ object StringsBnBd : SankalanStrings {
   override val updateCopyManifestBtn = "version.json নমুনা কপি করুন"
   override val updateManifestCopiedMsg = "version.json নমুনা কপি হয়েছে!"
 
-  override val homeHeroTagline = "আপনার জীবনের ছাপের সাথে"
+  override val homeHeroTagline = "আপনার জীবনের স্মৃতির সাথে"
   override val editorInlineTextHint = "কাগজের উপরেই সরাসরি লিখুন…"
   override val editorQuickOrbLabel = "কুইক টুলস"
   override val editorQuickOrbPen = "কলম / স্টাইলাস"
@@ -1208,6 +1269,36 @@ object StringsBnBd : SankalanStrings {
   override val feedbackEmptyLabel = "এখনো কোনো কমেন্ট নেই — উপরের বারে প্রথম ফিডব্যাক দিন!"
   override val feedbackDeleteBtn = "মুছুন"
   override val feedbackYouBadge = "আপনি"
+
+  override val stickerEditorTitle = "স্মার্ট স্টিকার স্টুডিও"
+  override val stickerEditorSubtitle = "ছবি ক্রপ করুন, হাত দিয়ে মোটামুটি অবজেক্ট ঘিরে দেখান — সফটওয়্যার সুন্দর মতো কেটে স্টিকার বর্ডার যোগ করবে।"
+  override val stickerTitleLabel = "স্টিকারের নাম"
+  override val stickerTitleHint = "যেমন: গোলাপ ফুলের স্টিকার"
+  override val stickerTabCrop = "১. ক্রপ ও ঘোরান"
+  override val stickerTabCutout = "২. অবজেক্ট কাটআউট"
+  override val stickerTabBorder = "৩. স্টিকার বর্ডার"
+  override val stickerAspectFree = "মুক্ত ক্রপ"
+  override val stickerAspectSquare = "১:১ বর্গ"
+  override val stickerRotate90 = "৯০° ঘোরান"
+  override val stickerResetCrop = "রিসেট ক্রপ"
+  override val stickerModeAuto = "অটো স্মার্ট"
+  override val stickerModeLasso = "হাত দিয়ে ঘিরুন"
+  override val stickerModeOriginal = "সম্পূর্ণ ছবি"
+  override val stickerBrushKeep = "+ রাখুন"
+  override val stickerBrushErase = "− মুছুন"
+  override val stickerUndoStroke = "আনডু"
+  override val stickerClearLasso = "দাগ মুছুন"
+  override val stickerSensitivityLabel = "স্মার্ট এজ সংবেদনশীলতা"
+  override val stickerLassoGuideHint = "আঙুল দিয়ে অবজেক্টের চারপাশে মোটামুটি ঘিরে দিন — ভিতরের স্মার্ট সফটওয়্যার আসল অবজেক্ট বরাবর নিখুঁতভাবে কেটে নেবে।"
+  override val stickerAutoGuideHint = "মাঝের মূল অবজেক্টটি স্বয়ংক্রিয়ভাবে আলাদা করা হচ্ছে। প্রয়োজনে + রাখুন বা − মুছুন দিয়ে নির্দেশনা দিন।"
+  override val stickerBorderToggleLabel = "স্টিকার ডাই-কাট বর্ডার"
+  override val stickerBorderThicknessLabel = "বর্ডারের পুরুত্ব"
+  override val stickerBorderColorLabel = "বর্ডারের রঙ"
+  override val stickerBorderGoldTrimLabel = "সোনালি হেয়ারলাইন বর্ডার"
+  override val stickerBorderShadowLabel = "হালকা কাগজের ছায়া"
+  override val stickerSaveBtn = "স্টিকার সেভ করুন"
+  override val stickerSavingBtn = "প্রস্তুত হচ্ছে…"
+  override val stickerEditExistingBtn = "এডিট করুন"
 }
 
 val LocalStrings = staticCompositionLocalOf<SankalanStrings> { StringsBnBd }

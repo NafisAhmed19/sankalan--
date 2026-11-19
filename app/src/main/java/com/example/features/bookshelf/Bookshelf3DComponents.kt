@@ -146,15 +146,39 @@ fun WalnutShelfCabinetRow(
             ),
         contentAlignment = Alignment.BottomStart,
       ) {
-        // Warm overhead library lamp cone + side cabinet stiles
+        // Warm overhead library lamp cone + wainscoting seams + side cabinet stiles
         Canvas(modifier = Modifier.matchParentSize()) {
+          // Vertical timber wainscoting grooves along back wall
+          val slatStep = 44.dp.toPx()
+          var sx = slatStep
+          while (sx < size.width - 16.dp.toPx()) {
+            drawLine(
+              color = Color.Black.copy(alpha = 0.24f),
+              start = Offset(sx, 0f),
+              end = Offset(sx, size.height),
+              strokeWidth = 1.dp.toPx(),
+            )
+            drawLine(
+              color = SankalanTokens.AntiqueGold.copy(alpha = 0.045f),
+              start = Offset(sx + 1.2.dp.toPx(), 0f),
+              end = Offset(sx + 1.2.dp.toPx(), size.height),
+              strokeWidth = 0.7.dp.toPx(),
+            )
+            sx += slatStep
+          }
+
           // Overhead warm cone light
           drawRect(
             brush =
               Brush.radialGradient(
-                colors = listOf(SankalanTokens.AntiqueGold.copy(alpha = 0.14f), Color.Transparent),
+                colors =
+                  listOf(
+                    SankalanTokens.GoldHighlight.copy(alpha = 0.16f),
+                    SankalanTokens.AntiqueGold.copy(alpha = 0.07f),
+                    Color.Transparent,
+                  ),
                 center = Offset(size.width * 0.5f, 0f),
-                radius = size.width * 0.65f,
+                radius = size.width * 0.68f,
               )
           )
           // Left & right 3D side cabinet stiles (depth walls)
@@ -265,11 +289,11 @@ fun WalnutShelfCabinetRow(
         }
       }
 
-      // 3D Walnut Wooden Shelf Ledge (Top bevel + Gold Inlay + Front Face + Cast Drop Shadow)
-      Canvas(modifier = Modifier.fillMaxWidth().height(26.dp)) {
+      // 3D Walnut Wooden Shelf Ledge (Top bevel + Woodgrain + Gold Inlay + Brass Studs + Drop Shadow)
+      Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
         val topBevelH = 6.dp.toPx()
-        val frontH = 14.dp.toPx()
-        val shadowH = 6.dp.toPx()
+        val frontH = 15.dp.toPx()
+        val shadowH = 7.dp.toPx()
 
         // Top receding horizontal wood plane (lighter due to overhead light)
         val topPlane =
@@ -282,7 +306,15 @@ fun WalnutShelfCabinetRow(
           }
         drawPath(
           path = topPlane,
-          brush = Brush.verticalGradient(colors = listOf(shelfWoodTop.copy(alpha = 0.85f), shelfWoodTop)),
+          brush = Brush.verticalGradient(colors = listOf(shelfWoodTop.copy(alpha = 0.88f), shelfWoodTop)),
+        )
+
+        // Chamfered specular highlight along front lip
+        drawLine(
+          color = Color.White.copy(alpha = 0.14f),
+          start = Offset(0f, topBevelH),
+          end = Offset(size.width, topBevelH),
+          strokeWidth = 0.8.dp.toPx(),
         )
 
         // Front thick shelf face
@@ -292,13 +324,29 @@ fun WalnutShelfCabinetRow(
           size = Size(size.width, frontH),
         )
 
-        // Antique-gold inlay trim line along front shelf edge
+        // Subtle horizontal hardwood grain streaks across shelf front
+        val grainOffsets = listOf(3.dp.toPx(), 7.5.dp.toPx(), 11.5.dp.toPx())
+        grainOffsets.forEachIndexed { idx, dy ->
+          drawLine(
+            color = Color.Black.copy(alpha = if (idx == 1) 0.16f else 0.10f),
+            start = Offset(14.dp.toPx(), topBevelH + dy),
+            end = Offset(size.width - 14.dp.toPx(), topBevelH + dy),
+            strokeWidth = 0.7.dp.toPx(),
+          )
+        }
+
+        // Antique-gold inlay trim line along front shelf edge + corner brass bracket rivets
+        val inlayY = topBevelH + 4.5.dp.toPx()
         drawLine(
-          color = SankalanTokens.AntiqueGold.copy(alpha = 0.55f),
-          start = Offset(10.dp.toPx(), topBevelH + 4.dp.toPx()),
-          end = Offset(size.width - 10.dp.toPx(), topBevelH + 4.dp.toPx()),
+          color = SankalanTokens.AntiqueGold.copy(alpha = 0.62f),
+          start = Offset(12.dp.toPx(), inlayY),
+          end = Offset(size.width - 12.dp.toPx(), inlayY),
           strokeWidth = 1.dp.toPx(),
         )
+        val studY = topBevelH + frontH * 0.5f
+        val studRadius = 2.dp.toPx()
+        drawCircle(SankalanTokens.GoldHighlight.copy(alpha = 0.78f), studRadius, Offset(10.dp.toPx(), studY))
+        drawCircle(SankalanTokens.GoldHighlight.copy(alpha = 0.78f), studRadius, Offset(size.width - 10.dp.toPx(), studY))
 
         // Deep drop shadow beneath shelf ledge
         drawRect(

@@ -12,12 +12,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoStories
@@ -409,39 +413,48 @@ private fun AuthenticatedSankalanShell(
             containerColor = palette.background,
             bottomBar = {
               if (!useRail) {
-                NavigationBar(
-                  containerColor = palette.shelfSurface,
-                  contentColor = palette.textPrimary,
-                ) {
-                  PhoneBottomTabs.forEach { tab ->
-                    val selected = currentRoute == tab.route
-                    NavigationBarItem(
-                      selected = selected,
-                      onClick = { navigateTab(tab.route) },
-                      icon = {
-                        Icon(
-                          imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                          contentDescription = tab.label(strings),
-                        )
-                      },
-                      label = {
-                        Text(
-                          text = tab.label(strings),
-                          style = MaterialTheme.typography.labelSmall,
-                          maxLines = 1,
-                          overflow = TextOverflow.Ellipsis,
-                        )
-                      },
-                      colors =
-                        NavigationBarItemDefaults.colors(
-                          selectedIconColor = SankalanTokens.Walnut900,
-                          selectedTextColor = palette.goldAccent,
-                          indicatorColor = palette.goldAccent,
-                          unselectedIconColor = palette.textSecondary,
-                          unselectedTextColor = palette.textSecondary,
-                        ),
-                      modifier = Modifier.testTag(tab.testTag),
-                    )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                  Box(
+                    modifier =
+                      Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(palette.borderGold.copy(alpha = 0.48f))
+                  )
+                  NavigationBar(
+                    containerColor = palette.shelfSurface,
+                    contentColor = palette.textPrimary,
+                  ) {
+                    PhoneBottomTabs.forEach { tab ->
+                      val selected = currentRoute == tab.route
+                      NavigationBarItem(
+                        selected = selected,
+                        onClick = { navigateTab(tab.route) },
+                        icon = {
+                          Icon(
+                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                            contentDescription = tab.label(strings),
+                          )
+                        },
+                        label = {
+                          Text(
+                            text = tab.label(strings),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                          )
+                        },
+                        colors =
+                          NavigationBarItemDefaults.colors(
+                            selectedIconColor = SankalanTokens.Walnut900,
+                            selectedTextColor = palette.goldAccent,
+                            indicatorColor = palette.goldAccent,
+                            unselectedIconColor = palette.textSecondary,
+                            unselectedTextColor = palette.textSecondary,
+                          ),
+                        modifier = Modifier.testTag(tab.testTag),
+                      )
+                    }
                   }
                 }
               }
@@ -449,40 +462,49 @@ private fun AuthenticatedSankalanShell(
           ) { innerPadding ->
             Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
               if (useRail) {
-                NavigationRail(
-                  containerColor = palette.shelfSurface,
-                  contentColor = palette.textPrimary,
-                  modifier = Modifier.fillMaxHeight(),
-                ) {
-                  RailTabs.forEach { tab ->
-                    val selected = currentRoute == tab.route
-                    NavigationRailItem(
-                      selected = selected,
-                      onClick = { navigateTab(tab.route) },
-                      icon = {
-                        Icon(
-                          imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                          contentDescription = tab.label(strings),
-                        )
-                      },
-                      label = {
-                        Text(
-                          text = tab.label(strings),
-                          style = MaterialTheme.typography.labelSmall,
-                          maxLines = 1,
-                        )
-                      },
-                      colors =
-                        NavigationRailItemDefaults.colors(
-                          selectedIconColor = SankalanTokens.Walnut900,
-                          selectedTextColor = palette.goldAccent,
-                          indicatorColor = palette.goldAccent,
-                          unselectedIconColor = palette.textSecondary,
-                          unselectedTextColor = palette.textSecondary,
-                        ),
-                      modifier = Modifier.testTag(tab.testTag),
-                    )
+                Row(modifier = Modifier.fillMaxHeight()) {
+                  NavigationRail(
+                    containerColor = palette.shelfSurface,
+                    contentColor = palette.textPrimary,
+                    modifier = Modifier.fillMaxHeight(),
+                  ) {
+                    RailTabs.forEach { tab ->
+                      val selected = currentRoute == tab.route
+                      NavigationRailItem(
+                        selected = selected,
+                        onClick = { navigateTab(tab.route) },
+                        icon = {
+                          Icon(
+                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                            contentDescription = tab.label(strings),
+                          )
+                        },
+                        label = {
+                          Text(
+                            text = tab.label(strings),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                          )
+                        },
+                        colors =
+                          NavigationRailItemDefaults.colors(
+                            selectedIconColor = SankalanTokens.Walnut900,
+                            selectedTextColor = palette.goldAccent,
+                            indicatorColor = palette.goldAccent,
+                            unselectedIconColor = palette.textSecondary,
+                            unselectedTextColor = palette.textSecondary,
+                          ),
+                        modifier = Modifier.testTag(tab.testTag),
+                      )
+                    }
                   }
+                  Box(
+                    modifier =
+                      Modifier
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .background(palette.borderGold.copy(alpha = 0.48f))
+                  )
                 }
               }
 

@@ -134,12 +134,16 @@ import com.example.features.bookshelf.parseHexColor
 import com.example.features.studio.PageTemplate
 import com.example.features.studio.PaperSelectorPanel
 import com.example.features.studio.SafeTemplateConfirmDialog
+import com.example.features.studio.StickerCutoutEditorDialog
+import com.example.features.studio.StickerCutoutEngine
 import com.example.features.studio.StudioAssetPackPanel
 import com.example.features.studio.StudioUserStore
 import com.example.features.studio.TemplateSelectorPanel
+import com.example.features.studio.UserUploadedAsset
 import com.example.features.studio.VoiceRecorderPanel
 import com.example.features.studio.applyTemplateToPage
 import com.example.features.studio.findPaperPreset
+import com.example.ui.components.SankalanAtmosphericBackdrop
 import com.example.ui.components.SaveStatusPill
 import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanSpacing
@@ -217,6 +221,7 @@ fun CanvasEditorScreen(
   // Dialog states
   var pendingPhotoForCrop by remember { mutableStateOf<Pair<String, CanvasElement?>?>(null) }
   var pendingSafeTemplate by remember { mutableStateOf<PageTemplate?>(null) }
+  var pendingStickerEditor by remember { mutableStateOf<Pair<android.graphics.Bitmap, UserUploadedAsset?>?>(null) }
 
   fun commitAndPersist(nextPage: Page) {
     history.commit(nextPage)
@@ -312,24 +317,9 @@ fun CanvasEditorScreen(
   val pickUserAssetLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
       if (uri != null) {
-        val created = studioStore.savePickedUserUpload(uri)
-        if (created != null) {
-          userUploads = studioStore.loadUploads()
-          val el =
-            CanvasElement(
-              id = UUID.randomUUID().toString(),
-              type = "sticker",
-              x = 0.28f,
-              y = 0.30f,
-              w = 0.34f,
-              h = 0.24f,
-              zIndex = nextZIndex(workingPage),
-              assetId = created.id,
-              blobRef = created.filePath,
-              text = created.title,
-            )
-          selectedElementId = el.id
-          commitAndPersist(workingPage.copy(elements = workingPage.elements + el))
+        val decoded = StickerCutoutEngine.decodeUriWithExifCorrection(context, uri, maxDim = 960)
+        if (decoded != null) {
+          pendingStickerEditor = decoded to null
         }
       }
     }
@@ -441,6 +431,10 @@ fun CanvasEditorScreen(
       onPickUserUpload = {
         pickUserAssetLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
       },
+      onEditUserUpload = { upload ->
+        val src = studioStore.loadSourceBitmapForUpload(upload)
+        if (src != null) pendingStickerEditor = src to upload
+      },
       onApplyBackground = { nextBg ->
         val preset = findPaperPreset(nextBg.presetId)
         if (preset.isDarkPaper && penColorHex == "#302C29") {
@@ -550,7 +544,11 @@ fun CanvasEditorScreen(
       contentColor = palette.textPrimary,
       modifier = Modifier.fillMaxSize(),
     ) {
-      Column(modifier = Modifier.fillMaxSize()) {
+      SankalanAtmosphericBackdrop(
+        modifier = Modifier.fillMaxSize(),
+        showOrnamentFrame = false,
+      ) {
+        Column(modifier = Modifier.fillMaxSize()) {
         // 1. Top Editor Bar (Close, Page/Save pill, Undo, Redo, Done)
         Surface(
           color = palette.shelfSurface,
@@ -853,6 +851,7 @@ fun CanvasEditorScreen(
           )
         }
       }
+      }
     }
   }
 
@@ -890,6 +889,58 @@ fun CanvasEditorScreen(
           }
         commitAndPersist(workingPage.copy(elements = updatedElements))
         pendingPhotoForCrop = null
+      },
+    )
+  }
+
+  // Smart Sticker Cutout & Border Editor Dialog
+  if (pendingStickerEditor != null) {
+    val (sourceBmp, existingUpload) = pendingStickerEditor!!
+    StickerCutoutEditorDialog(
+      sourceBitmap = sourceBmp,
+      initialTitle = existingUpload?.title ?: "My Sticker",
+      onDismiss = {
+        pendingStickerEditor = null
+      },
+      onSaveSticker = { finalStickerBmp, title ->
+        val saved =
+          studioStore.saveEditedSticker(
+            stickerBitmap = finalStickerBmp,
+            sourceBitmap = sourceBmp,
+            title = title,
+            existingAssetId = existingUpload?.id,
+          )
+        if (finalStickerBmp !== sourceBmp && !finalStickerBmp.isRecycled) {
+          finalStickerBmp.recycle()
+        }
+        pendingStickerEditor = null
+        if (saved != null) {
+          userUploads = studioStore.loadUploads()
+          if (existingUpload == null) {
+            val el =
+              CanvasElement(
+                id = UUID.randomUUID().toString(),
+                type = "sticker",
+                x = 0.28f,
+                y = 0.30f,
+                w = 0.34f,
+                h = 0.24f,
+                zIndex = nextZIndex(workingPage),
+                assetId = saved.id,
+                blobRef = saved.filePath,
+                text = saved.title,
+              )
+            selectedElementId = el.id
+            commitAndPersist(workingPage.copy(elements = workingPage.elements + el))
+          } else {
+            val updatedElements =
+              workingPage.elements.map { el ->
+                if (el.assetId == saved.id) el.copy(blobRef = saved.filePath, text = saved.title)
+                else el
+              }
+            commitAndPersist(workingPage.copy(elements = updatedElements))
+          }
+        }
       },
     )
   }
@@ -1884,6 +1935,7 @@ private fun EditorInspectorContent(
   onInsertStudioAsset: (com.example.features.studio.StudioAsset) -> Unit,
   onInsertUserUpload: (com.example.features.studio.UserUploadedAsset) -> Unit,
   onPickUserUpload: () -> Unit,
+  onEditUserUpload: (com.example.features.studio.UserUploadedAsset) -> Unit,
   onApplyBackground: (com.example.core.model.PageBackground) -> Unit,
   onSelectTemplate: (PageTemplate) -> Unit,
   onAttachVoiceNote: (filePath: String, durationSeconds: Int) -> Unit,
@@ -2114,6 +2166,7 @@ private fun EditorInspectorContent(
         onInsertAsset = onInsertStudioAsset,
         onInsertUpload = onInsertUserUpload,
         onPickUserUpload = onPickUserUpload,
+        onEditUpload = onEditUserUpload,
       )
     }
     EditorToolMode.PAPER -> {

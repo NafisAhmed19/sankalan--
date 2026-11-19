@@ -31,12 +31,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import android.graphics.Bitmap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -113,14 +115,14 @@ fun StudioScreen(
   var selectedCategory by rememberSaveable { mutableStateOf(StudioCategory.ALL) }
   var pendingApplyAction by remember { mutableStateOf<StudioApplyAction?>(null) }
   var pendingSafeTemplateTarget by remember { mutableStateOf<Triple<String, Page, PageTemplate>?>(null) }
+  var pendingStickerEditor by remember { mutableStateOf<Pair<Bitmap, UserUploadedAsset?>?>(null) }
 
   val pickAssetLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
       if (uri != null) {
-        val created = store.savePickedUserUpload(uri)
-        if (created != null) {
-          userUploads = store.loadUploads()
-          selectedCategory = StudioCategory.MY_UPLOADS
+        val decoded = StickerCutoutEngine.decodeUriWithExifCorrection(context, uri, maxDim = 960)
+        if (decoded != null) {
+          pendingStickerEditor = decoded to null
         }
       }
     }
@@ -523,10 +525,27 @@ fun StudioScreen(
                       horizontalAlignment = Alignment.CenterHorizontally,
                       verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                      ) {
+                        IconButton(
+                          onClick = {
+                            val src = store.loadSourceBitmapForUpload(upload)
+                            if (src != null) pendingStickerEditor = src to upload
+                          },
+                          modifier = Modifier.size(28.dp).testTag("studio_edit_upload_${upload.id}"),
+                        ) {
+                          Icon(
+                            Icons.Outlined.Edit,
+                            contentDescription = strings.stickerEditExistingBtn,
+                            tint = palette.goldAccent,
+                            modifier = Modifier.size(16.dp),
+                          )
+                        }
                         IconButton(
                           onClick = { userUploads = store.deleteUpload(upload.id) },
-                          modifier = Modifier.size(24.dp),
+                          modifier = Modifier.size(28.dp),
                         ) {
                           Icon(Icons.Outlined.DeleteOutline, contentDescription = strings.delete, modifier = Modifier.size(16.dp))
                         }
@@ -653,6 +672,34 @@ fun StudioScreen(
       onOverlay = {
         onApplyToDiaryPage(diaryId, applyTemplateToPage(page, tpl, replaceExisting = false, isBangla = isBangla))
         pendingSafeTemplateTarget = null
+      },
+    )
+  }
+
+  if (pendingStickerEditor != null) {
+    val (sourceBmp, existingUpload) = pendingStickerEditor!!
+    StickerCutoutEditorDialog(
+      sourceBitmap = sourceBmp,
+      initialTitle = existingUpload?.title ?: "My Sticker",
+      onDismiss = {
+        pendingStickerEditor = null
+      },
+      onSaveSticker = { finalStickerBmp, title ->
+        val saved =
+          store.saveEditedSticker(
+            stickerBitmap = finalStickerBmp,
+            sourceBitmap = sourceBmp,
+            title = title,
+            existingAssetId = existingUpload?.id,
+          )
+        if (finalStickerBmp !== sourceBmp && !finalStickerBmp.isRecycled) {
+          finalStickerBmp.recycle()
+        }
+        pendingStickerEditor = null
+        if (saved != null) {
+          userUploads = store.loadUploads()
+          selectedCategory = StudioCategory.MY_UPLOADS
+        }
       },
     )
   }

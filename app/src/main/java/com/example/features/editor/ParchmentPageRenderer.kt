@@ -46,6 +46,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -265,6 +266,37 @@ fun ParchmentPageSurface(
             }
           }
         }
+
+        // Physical left spine binding gutter shadow & warm paper edge vignette
+        drawRect(
+          brush =
+            Brush.horizontalGradient(
+              colors =
+                listOf(
+                  Color.Black.copy(alpha = if (preset.isDarkPaper) 0.28f else 0.11f),
+                  Color.Transparent,
+                ),
+              startX = 0f,
+              endX = size.width * 0.065f,
+            ),
+          topLeft = Offset.Zero,
+          size = Size(size.width * 0.065f, size.height),
+        )
+        // Soft bottom/right aged paper shadow depth
+        drawRect(
+          brush =
+            Brush.verticalGradient(
+              colors =
+                listOf(
+                  Color.Transparent,
+                  (if (preset.isDarkPaper) Color.Black else SankalanTokens.Leather).copy(alpha = 0.055f),
+                ),
+              startY = size.height * 0.85f,
+              endY = size.height,
+            ),
+          topLeft = Offset(0f, size.height * 0.85f),
+          size = Size(size.width, size.height * 0.15f),
+        )
       }
 
       // 2. Optional Page Header (Date, Mood, Pin, Title)

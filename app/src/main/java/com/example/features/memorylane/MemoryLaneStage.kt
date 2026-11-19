@@ -219,8 +219,9 @@ fun MemoryLaneStage(
 
   Surface(
     shape = MaterialTheme.shapes.medium,
-    color = palette.shelfSurface.copy(alpha = 0.95f),
+    color = palette.shelfSurface.copy(alpha = 0.86f),
     border = BorderStroke(1.dp, palette.borderGold),
+    shadowElevation = 6.dp,
     modifier = modifier.fillMaxWidth().testTag("home_memory_lane_card"),
   ) {
     Column(

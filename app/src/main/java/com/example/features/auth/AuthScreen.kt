@@ -256,10 +256,10 @@ fun AuthScreen(
     contentAlignment = Alignment.Center,
   ) {
     Image(
-      painter = painterResource(id = R.drawable.img_welcome_backdrop),
+      painter = painterResource(id = R.drawable.img_walnut_study_dark),
       contentDescription = null,
       contentScale = ContentScale.Crop,
-      modifier = Modifier.fillMaxSize().alpha(0.18f),
+      modifier = Modifier.fillMaxSize().alpha(0.76f),
     )
 
     Column(

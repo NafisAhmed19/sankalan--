@@ -411,6 +411,7 @@ data class UserUploadedAsset(
   val id: String,
   val title: String,
   val filePath: String,
+  val sourcePath: String? = null,
   val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -438,38 +439,102 @@ class StudioUserStore(private val context: Context) {
       .filter { File(it.filePath).exists() }
   }
 
+  fun loadSourceBitmapForUpload(asset: UserUploadedAsset, maxDim: Int = 960): Bitmap? {
+    val targetPath =
+      asset.sourcePath?.takeIf { File(it).exists() } ?: asset.filePath.takeIf { File(it).exists() }
+      ?: return null
+    return runCatching {
+      val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      BitmapFactory.decodeFile(targetPath, bounds)
+      if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+      var sample = 1
+      while (bounds.outWidth / sample > maxDim || bounds.outHeight / sample > maxDim) sample *= 2
+      val decode =
+        BitmapFactory.Options().apply {
+          inSampleSize = sample
+          inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+      BitmapFactory.decodeFile(targetPath, decode)
+    }.getOrNull()
+  }
+
   fun savePickedUserUpload(uri: Uri, title: String? = null): UserUploadedAsset? {
-    val path =
+    val bmp = StickerCutoutEngine.decodeUriWithExifCorrection(context, uri, maxDim = 960) ?: return null
+    return try {
+      saveEditedSticker(
+        stickerBitmap = bmp,
+        sourceBitmap = bmp,
+        title = title ?: "My Sticker",
+        existingAssetId = null,
+      )
+    } finally {
+      bmp.recycle()
+    }
+  }
+
+  fun saveEditedSticker(
+    stickerBitmap: Bitmap,
+    sourceBitmap: Bitmap?,
+    title: String,
+    existingAssetId: String? = null,
+  ): UserUploadedAsset? {
+    val dir = File(context.filesDir, "user_assets").apply { mkdirs() }
+    val existingList = loadUploads()
+    val previous = existingAssetId?.let { id -> existingList.firstOrNull { it.id == id } }
+
+    val stickerPath =
       runCatching {
-        val dir = File(context.filesDir, "user_assets").apply { mkdirs() }
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (bounds.outWidth / sample > 960 || bounds.outHeight / sample > 960) sample *= 2
-        val decode = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bmp =
-          context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, decode) }
-            ?: return null
-        val file = File(dir, "asset_${UUID.randomUUID()}.png")
-        FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 92, it) }
-        bmp.recycle()
+        val file = File(dir, "sticker_${UUID.randomUUID()}.png")
+        FileOutputStream(file).use { out ->
+          stickerBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }
         file.absolutePath
       }.getOrNull() ?: return null
 
-    val asset =
+    val savedSourcePath =
+      previous?.sourcePath?.takeIf { File(it).exists() }
+        ?: sourceBitmap?.takeIf { !it.isRecycled }?.let { src ->
+          runCatching {
+            val file = File(dir, "source_${UUID.randomUUID()}.png")
+            FileOutputStream(file).use { out ->
+              src.compress(Bitmap.CompressFormat.PNG, 96, out)
+            }
+            file.absolutePath
+          }.getOrNull()
+        }
+
+    previous?.filePath?.let { oldPath ->
+      if (oldPath != stickerPath && oldPath != savedSourcePath) {
+        runCatching { File(oldPath).delete() }
+      }
+    }
+
+    val safeTitle = title.trim().takeIf { it.isNotEmpty() } ?: "My Sticker"
+    val finalAsset =
       UserUploadedAsset(
-        id = "upload_${UUID.randomUUID()}",
-        title = title?.trim()?.takeIf { it.isNotEmpty() } ?: "My Sticker",
-        filePath = path,
+        id = previous?.id ?: "upload_${UUID.randomUUID()}",
+        title = safeTitle,
+        filePath = stickerPath,
+        sourcePath = savedSourcePath,
+        createdAt = previous?.createdAt ?: System.currentTimeMillis(),
       )
-    val current = listOf(asset) + loadUploads()
-    prefs.edit().putString(KEY_UPLOADS, uploadsAdapter.toJson(current)).apply()
-    return asset
+
+    val updatedList =
+      if (previous != null) {
+        existingList.map { if (it.id == previous.id) finalAsset else it }
+      } else {
+        listOf(finalAsset) + existingList
+      }
+    prefs.edit().putString(KEY_UPLOADS, uploadsAdapter.toJson(updatedList)).apply()
+    return finalAsset
   }
 
   fun deleteUpload(id: String): List<UserUploadedAsset> {
     val existing = loadUploads()
-    existing.firstOrNull { it.id == id }?.let { runCatching { File(it.filePath).delete() } }
+    existing.firstOrNull { it.id == id }?.let { item ->
+      runCatching { File(item.filePath).delete() }
+      item.sourcePath?.let { sp -> runCatching { File(sp).delete() } }
+    }
     val next = existing.filterNot { it.id == id }
     prefs.edit().putString(KEY_UPLOADS, uploadsAdapter.toJson(next)).apply()
     return next

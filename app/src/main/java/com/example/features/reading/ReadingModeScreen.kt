@@ -91,6 +91,7 @@ import com.example.core.model.ReadingLayout
 import com.example.features.bookshelf.BookCoverArt
 import com.example.features.editor.ParchmentPageSurface
 import com.example.features.editor.VoiceNoteManager
+import com.example.ui.components.SankalanAtmosphericBackdrop
 import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanSpacing
 import com.example.ui.theme.SankalanTokens
@@ -216,7 +217,7 @@ fun ReadingModeScreen(
       contentColor = palette.textPrimary,
       modifier = Modifier.fillMaxSize(),
     ) {
-      Box(modifier = Modifier.fillMaxSize()) {
+      SankalanAtmosphericBackdrop(modifier = Modifier.fillMaxSize()) {
         Column(
           modifier = Modifier.fillMaxSize(),
           horizontalAlignment = Alignment.CenterHorizontally,

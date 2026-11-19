@@ -243,9 +243,9 @@ fun HomeScreen(
             // Centered Illuminated Hero Backdrop Card with radial golden spotlight & Alpona corner arcs
             Surface(
               shape = RoundedCornerShape(22.dp),
-              color = if (palette.isDark) SankalanTokens.Walnut900 else Color(0xFF2D1E17),
-              border = BorderStroke(1.5.dp, SankalanTokens.AntiqueGold.copy(alpha = 0.72f)),
-              shadowElevation = 8.dp,
+              color = (if (palette.isDark) SankalanTokens.Walnut900 else Color(0xFF2D1E17)).copy(alpha = 0.84f),
+              border = BorderStroke(1.5.dp, SankalanTokens.AntiqueGold.copy(alpha = 0.78f)),
+              shadowElevation = 10.dp,
               modifier = Modifier.fillMaxWidth().testTag("home_hero_header"),
             ) {
               Box(modifier = Modifier.fillMaxWidth()) {
@@ -256,8 +256,8 @@ fun HomeScreen(
                       Brush.radialGradient(
                         colors =
                           listOf(
-                            SankalanTokens.AntiqueGold.copy(alpha = 0.28f),
-                            SankalanTokens.Walnut700.copy(alpha = 0.35f),
+                            SankalanTokens.AntiqueGold.copy(alpha = 0.34f),
+                            SankalanTokens.Walnut700.copy(alpha = 0.38f),
                             Color.Transparent,
                           ),
                         center = Offset(size.width * 0.5f, size.height * 0.44f),
@@ -488,8 +488,9 @@ fun HomeScreen(
             } else {
               Surface(
                 shape = MaterialTheme.shapes.medium,
-                color = palette.cardSurface,
-                border = BorderStroke(1.dp, palette.borderSubtle),
+                color = palette.cardSurface.copy(alpha = 0.88f),
+                border = BorderStroke(1.dp, palette.borderGold.copy(alpha = 0.38f)),
+                shadowElevation = 3.dp,
                 modifier = Modifier.fillMaxWidth().testTag("home_bookshelf_card"),
               ) {
                 Column(
@@ -646,8 +647,9 @@ private fun CoverStyleTile(
   val palette = LocalSankalanPalette.current
   Surface(
     shape = MaterialTheme.shapes.small,
-    color = palette.shelfSurface,
-    border = BorderStroke(1.dp, palette.borderSubtle),
+    color = palette.shelfSurface.copy(alpha = 0.88f),
+    border = BorderStroke(1.dp, palette.borderGold.copy(alpha = 0.35f)),
+    shadowElevation = 2.dp,
     modifier = modifier,
   ) {
     Row(

@@ -258,8 +258,9 @@ fun MoodAndPromptDashboardCard(
 
   Surface(
     shape = MaterialTheme.shapes.medium,
-    color = palette.cardSurface,
+    color = palette.cardSurface.copy(alpha = 0.86f),
     border = BorderStroke(1.dp, palette.borderGold),
+    shadowElevation = 4.dp,
     modifier = modifier.fillMaxWidth().testTag("home_insights_card"),
   ) {
     Column(

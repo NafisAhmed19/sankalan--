@@ -118,6 +118,7 @@ import com.example.features.update.AppUpdateChecker
 import com.example.features.update.AppUpdateNotifier
 import com.example.features.update.UpdateAvailableDialog
 import com.example.features.update.UpdateCheckResult
+import com.example.ui.components.SankalanAtmosphericBackdrop
 import com.example.ui.theme.InterFontFamily
 import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.NotoSansBengaliFontFamily
@@ -174,10 +175,11 @@ fun SettingsScreen(
   val strings = LocalStrings.current
   val palette = LocalSankalanPalette.current
 
-  BoxWithConstraints(
-    modifier = modifier.fillMaxSize().background(palette.background),
-    contentAlignment = Alignment.TopCenter,
-  ) {
+  SankalanAtmosphericBackdrop(modifier = modifier) {
+    BoxWithConstraints(
+      modifier = Modifier.fillMaxSize(),
+      contentAlignment = Alignment.TopCenter,
+    ) {
     val twoColumns = maxWidth >= 700.dp
 
     LazyColumn(
@@ -371,6 +373,7 @@ fun SettingsScreen(
         )
       }
     }
+  }
   }
 }
 
@@ -1358,9 +1361,10 @@ private fun SettingsCard(
   val palette = LocalSankalanPalette.current
   Surface(
     shape = MaterialTheme.shapes.medium,
-    color = palette.cardSurface,
-    border = BorderStroke(1.dp, palette.borderSubtle),
-    tonalElevation = 1.dp,
+    color = palette.cardSurface.copy(alpha = 0.90f),
+    border = BorderStroke(1.dp, palette.borderGold.copy(alpha = 0.34f)),
+    tonalElevation = 2.dp,
+    shadowElevation = 3.dp,
     modifier = Modifier.fillMaxWidth(),
   ) {
     Column(
