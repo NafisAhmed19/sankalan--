@@ -20,7 +20,6 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "17"
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.3.1"
@@ -32,7 +31,9 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
       - name: Build APK
-        run: gradle :app:assembleDebug --no-daemon
+        env:
+          JAVA_OPTS: "-Djava.awt.headless=true"
+        run: gradle :app:assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=true"
       - name: Package APK & version.json
         run: |
           mkdir -p dist
@@ -60,3 +61,4 @@ jobs:
           else
             gh release create "$TAG" dist/sankalan-t.apk dist/version.json --title "সংকলন-ৎ | Sankalan-t $TAG" --notes "Official release of Sankalan-t."
           fi
+
