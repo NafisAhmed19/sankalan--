@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.email is string &&
+             data.email.size() >= 3 &&
+             data.email.size() <= 160 &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 60 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.authProvider == 'google' &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidFeedbackEntry(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.authorName is string &&
+             data.authorName.size() >= 1 &&
+             data.authorName.size() <= 60 &&
+             data.message is string &&
+             data.message.size() >= 1 &&
+             data.message.size() <= 500 &&
+             data.category in ['general', 'feature', 'bug', 'love'] &&
+             data.rating is int &&
+             data.rating >= 1 &&
+             data.rating <= 5 &&
+             data.status == 'published' &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    // Owner-isolated user account profiles (PII protected)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().keys().hasAll(['userId', 'email', 'displayName', 'authProvider', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'authProvider', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().authProvider == existing().authProvider &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // Community feedback bar entries (no PII stored; authenticated users only)
+    match /feedback/{feedbackId} {
+      allow get: if isSignedIn() && isValidId(feedbackId) && existing().status == 'published';
+      allow list: if isSignedIn() && existing().status == 'published';
+
+      allow create: if isSignedIn() &&
+                       isValidId(feedbackId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'authorName', 'message', 'category', 'rating', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'authorName', 'message', 'category', 'rating', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidFeedbackEntry(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(feedbackId) &&
+                       existing().userId == request.auth.uid &&
+                       isValidFeedbackEntry(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status == existing().status &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['authorName', 'message', 'category', 'rating', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(feedbackId) && existing().userId == request.auth.uid;
+    }
+  }
+}

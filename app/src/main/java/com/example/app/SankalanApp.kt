@@ -46,6 +46,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,19 +58,33 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.BuildConfig
+import com.example.R
+import com.example.core.cloud.CloudAccountAndFeedbackRepository
+import com.example.core.data.SettingsRepository
 import com.example.core.i18n.LocalStrings
 import com.example.core.i18n.SankalanStrings
 import com.example.core.i18n.stringsFor
+import com.example.core.model.AppSettings
 import com.example.core.model.DiaryWithPages
 import com.example.core.model.Page
+import com.example.features.auth.AuthScreen
+import com.example.features.auth.CloudAuthAndFeedbackViewModel
+import com.example.features.auth.CloudUiState
+import com.example.features.auth.authStateFlow
+import com.example.features.auth.onGoogleSignInClicked
+import com.example.features.auth.signOutFromCloud
 import com.example.features.bookshelf.ArchiveScreen
 import com.example.features.bookshelf.BookCoverInspectionDialog
 import com.example.features.bookshelf.BookshelfScreen
@@ -98,6 +113,10 @@ import com.example.features.welcome.WelcomeScreen
 import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanTheme
 import com.example.ui.theme.SankalanTokens
+import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -175,13 +194,86 @@ private val RailTabs =
   )
 
 @Composable
-fun SankalanApp(viewModel: MainViewModel = viewModel()) {
+fun SankalanApp() {
+  val context = LocalContext.current
+  val settingsRepo = remember(context) { SettingsRepository(context.applicationContext) }
+  val preAuthSettings by
+    settingsRepo.settingsFlow.collectAsStateWithLifecycle(initialValue = AppSettings())
+  val authUser by
+    remember { Firebase.auth.authStateFlow() }
+      .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+  var pendingDisplayName by remember { mutableStateOf<String?>(null) }
+  val rootScope = rememberCoroutineScope()
+
+  if (authUser == null) {
+    val strings = stringsFor(preAuthSettings.language)
+    SankalanTheme(
+      themeMode = preAuthSettings.themeMode,
+      highContrast = preAuthSettings.highContrast,
+      language = preAuthSettings.language,
+      textScale = preAuthSettings.textScale,
+    ) {
+      CompositionLocalProvider(LocalStrings provides strings) {
+        AuthScreen(
+          currentLanguage = preAuthSettings.language,
+          onSelectLanguage = { lang ->
+            rootScope.launch { settingsRepo.setLanguage(lang, markInitialChosen = true) }
+          },
+          onPendingDisplayNameChosen = { pendingDisplayName = it },
+          onAuthSuccess = {},
+        )
+      }
+    }
+    return
+  }
+
+  val signedInUser = authUser!!
+  key(signedInUser.uid) {
+    val mainViewModel: MainViewModel = viewModel(key = "main_${signedInUser.uid}")
+    val cloudViewModel: CloudAuthAndFeedbackViewModel =
+      viewModel(
+        key = "cloud_${signedInUser.uid}",
+        factory =
+          viewModelFactory {
+            initializer {
+              val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
+              val db =
+                FirebaseFirestore.getInstance(app.getString(R.string.firestore_database_id))
+              CloudAuthAndFeedbackViewModel(
+                repository = CloudAccountAndFeedbackRepository(db),
+                currentUserId = signedInUser.uid,
+                initialDisplayNameOverride = pendingDisplayName,
+              )
+            }
+          },
+      )
+    AuthenticatedSankalanShell(
+      currentUser = signedInUser,
+      viewModel = mainViewModel,
+      cloudViewModel = cloudViewModel,
+    )
+  }
+}
+
+@Composable
+private fun AuthenticatedSankalanShell(
+  currentUser: FirebaseUser,
+  viewModel: MainViewModel,
+  cloudViewModel: CloudAuthAndFeedbackViewModel,
+) {
   val uiState by viewModel.uiState.collectAsStateWithLifecycle()
   val settings = uiState.settings
   val strings = stringsFor(settings.language)
+  val userProfileState by cloudViewModel.userProfileState.collectAsStateWithLifecycle()
+  val feedbackListState by cloudViewModel.feedbackListState.collectAsStateWithLifecycle()
+  val isSavingProfile by cloudViewModel.isSavingProfile.collectAsStateWithLifecycle()
+  val isSubmittingFeedback by cloudViewModel.isSubmittingFeedback.collectAsStateWithLifecycle()
+  val cloudStatusBanner by cloudViewModel.statusBanner.collectAsStateWithLifecycle()
 
   val context = LocalContext.current
   val lockManager = remember(context) { AppLockManager(context) }
+  val credentialManager = remember(context) { CredentialManager.create(context) }
+  val authScope = rememberCoroutineScope()
 
   var showCreateJournal by remember { mutableStateOf(false) }
   var showGlobalSearch by remember { mutableStateOf(false) }
@@ -495,10 +587,64 @@ fun SankalanApp(viewModel: MainViewModel = viewModel()) {
                   )
                 }
                 composable(SankalanRoutes.SETTINGS) {
+                  val profileData = (userProfileState as? CloudUiState.Success)?.data
+                  val resolvedAuthorName =
+                    profileData?.displayName?.takeIf { it.isNotBlank() }
+                      ?: currentUser.displayName?.takeIf { it.isNotBlank() }
+                      ?: currentUser.email?.substringBefore('@')?.takeIf { it.isNotBlank() }
+                      ?: "Sankalan Reader"
                   SettingsScreen(
                     settings = settings,
                     activeDiaries = allBooks,
                     datedPages = uiState.datedPages,
+                    currentUserId = currentUser.uid,
+                    currentUserEmail = currentUser.email.orEmpty(),
+                    currentAuthorName = resolvedAuthorName,
+                    userProfileState = userProfileState,
+                    feedbackListState = feedbackListState,
+                    isSavingProfile = isSavingProfile,
+                    isSubmittingFeedback = isSubmittingFeedback,
+                    cloudStatusBanner = cloudStatusBanner,
+                    onUpdateDisplayName = { newName ->
+                      cloudViewModel.updateDisplayName(
+                        newName = newName,
+                        successMsg = strings.accountNameSavedMsg,
+                        failureMsg = strings.accountNameErrorMsg,
+                      )
+                    },
+                    onSwitchAccount = {
+                      onGoogleSignInClicked(
+                        context = context,
+                        credentialManager = credentialManager,
+                        onAuthSuccess = {},
+                        onAuthError = {},
+                        scope = authScope,
+                      )
+                    },
+                    onSignOut = {
+                      signOutFromCloud(
+                        credentialManager = credentialManager,
+                        scope = authScope,
+                      )
+                    },
+                    onSubmitFeedback = { authorName, message, category, rating, onDone ->
+                      cloudViewModel.submitFeedback(
+                        authorName = authorName,
+                        message = message,
+                        category = category,
+                        rating = rating,
+                        successMsg = strings.feedbackSuccessMsg,
+                        failureMsg = strings.feedbackErrorMsg,
+                        onSubmitted = onDone,
+                      )
+                    },
+                    onDeleteFeedback = { feedbackId ->
+                      cloudViewModel.deleteFeedback(
+                        feedbackId = feedbackId,
+                        failureMsg = strings.feedbackErrorMsg,
+                      )
+                    },
+                    onDismissCloudBanner = { cloudViewModel.clearBanner() },
                     onLanguageChange = { viewModel.setLanguage(it) },
                     onNumeralStyleChange = { viewModel.setNumeralStyle(it) },
                     onThemeModeChange = { viewModel.setThemeMode(it) },

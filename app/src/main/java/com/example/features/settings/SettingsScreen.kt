@@ -94,6 +94,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.BuildConfig
 import com.example.R
+import com.example.core.cloud.FeedbackCategory
+import com.example.core.cloud.FeedbackEntry
+import com.example.core.cloud.UserProfile
 import com.example.core.i18n.LocalStrings
 import com.example.core.i18n.formatDigits
 import com.example.core.i18n.formatNumber
@@ -105,6 +108,7 @@ import com.example.core.model.DiaryWithPages
 import com.example.core.model.NumeralStyle
 import com.example.core.model.Page
 import com.example.core.model.ReadingLayout
+import com.example.features.auth.CloudUiState
 import com.example.features.calendar.CalendarIcsExporter
 import com.example.features.calendar.ReminderNotifier
 import com.example.features.export.BackupArchiveManager
@@ -134,6 +138,20 @@ fun SettingsScreen(
   settings: AppSettings,
   activeDiaries: List<DiaryWithPages> = emptyList(),
   datedPages: List<Page> = emptyList(),
+  currentUserId: String = "",
+  currentUserEmail: String = "",
+  currentAuthorName: String = "",
+  userProfileState: CloudUiState<UserProfile?> = CloudUiState.Loading,
+  feedbackListState: CloudUiState<List<FeedbackEntry>> = CloudUiState.Loading,
+  isSavingProfile: Boolean = false,
+  isSubmittingFeedback: Boolean = false,
+  cloudStatusBanner: Pair<Boolean, String>? = null,
+  onUpdateDisplayName: (String) -> Unit = {},
+  onSwitchAccount: () -> Unit = {},
+  onSignOut: () -> Unit = {},
+  onSubmitFeedback: (String, String, FeedbackCategory, Int, () -> Unit) -> Unit = { _, _, _, _, _ -> },
+  onDeleteFeedback: (String) -> Unit = {},
+  onDismissCloudBanner: () -> Unit = {},
   onLanguageChange: (AppLanguage) -> Unit,
   onNumeralStyleChange: (NumeralStyle) -> Unit,
   onThemeModeChange: (AppThemeMode) -> Unit,
@@ -193,6 +211,14 @@ fun SettingsScreen(
               modifier = Modifier.weight(1f),
               verticalArrangement = Arrangement.spacedBy(SankalanSpacing.lg),
             ) {
+              AccountProfileCard(
+                currentUserEmail = currentUserEmail,
+                userProfileState = userProfileState,
+                isSavingProfile = isSavingProfile,
+                onUpdateDisplayName = onUpdateDisplayName,
+                onSwitchAccount = onSwitchAccount,
+                onSignOut = onSignOut,
+              )
               LanguageAndNumeralCard(
                 settings = settings,
                 onLanguageChange = onLanguageChange,
@@ -221,6 +247,16 @@ fun SettingsScreen(
               modifier = Modifier.weight(1f),
               verticalArrangement = Arrangement.spacedBy(SankalanSpacing.lg),
             ) {
+              FeedbackCommunityCard(
+                currentUserId = currentUserId,
+                currentAuthorName = currentAuthorName,
+                feedbackListState = feedbackListState,
+                isSubmittingFeedback = isSubmittingFeedback,
+                statusBanner = cloudStatusBanner,
+                onSubmitFeedback = onSubmitFeedback,
+                onDeleteFeedback = onDeleteFeedback,
+                onDismissBanner = onDismissCloudBanner,
+              )
               TypographyPreviewCard(textScale = settings.textScale)
               AccessibilityCard(
                 settings = settings,
@@ -243,6 +279,28 @@ fun SettingsScreen(
           }
         }
       } else {
+        item {
+          AccountProfileCard(
+            currentUserEmail = currentUserEmail,
+            userProfileState = userProfileState,
+            isSavingProfile = isSavingProfile,
+            onUpdateDisplayName = onUpdateDisplayName,
+            onSwitchAccount = onSwitchAccount,
+            onSignOut = onSignOut,
+          )
+        }
+        item {
+          FeedbackCommunityCard(
+            currentUserId = currentUserId,
+            currentAuthorName = currentAuthorName,
+            feedbackListState = feedbackListState,
+            isSubmittingFeedback = isSubmittingFeedback,
+            statusBanner = cloudStatusBanner,
+            onSubmitFeedback = onSubmitFeedback,
+            onDeleteFeedback = onDeleteFeedback,
+            onDismissBanner = onDismissCloudBanner,
+          )
+        }
         item {
           LanguageAndNumeralCard(
             settings = settings,

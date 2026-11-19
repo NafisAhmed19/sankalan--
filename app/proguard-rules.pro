@@ -1,21 +1,43 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Add project specific ProGuard / R8 rules here.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve stack-trace line numbers while hiding original source file names.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve Kotlin metadata and runtime annotations required by Moshi KotlinJsonAdapterFactory.
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,Signature,InnerClasses,EnclosingMethod
+-keep class kotlin.Metadata { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep @Keep annotated Firestore models and cloud DTOs under R8 minification.
+-keep @androidx.annotation.Keep class * { *; }
+-keep class com.example.core.cloud.** { *; }
+
+# Keep Moshi reflection adapters and serialized domain/archive/update payload models intact.
+-keepclassmembers class * {
+    @com.squareup.moshi.Json <fields>;
+}
+-keep class com.example.core.model.** { *; }
+-keep class com.example.features.update.UpdateReleaseManifest { *; }
+-keep class com.example.features.export.SankalanBackupManifest { *; }
+-keep class com.example.features.editor.StrokePoint { *; }
+-keep class com.example.features.editor.StrokePayload { *; }
+-keep class com.example.features.editor.ImageFramePayload { *; }
+-keep class com.example.features.studio.UserUploadedAsset { *; }
+-dontwarn com.squareup.moshi.**
+-dontwarn javax.annotation.**
+
+# Keep Room database, entities, and DAOs.
+-keep class * extends androidx.room.RoomDatabase
+-keep class com.example.core.data.local.** { *; }
+
+# Keep manifest-declared Android entry points.
+-keep class com.example.MainActivity { *; }
+-keep class com.example.features.update.AppUpdateJobService { *; }
+
+# Strip verbose/debug/info logs from release builds.
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

@@ -8,4 +8,5 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="sankalan_lock_store.xml" />
     <exclude domain="sharedpref" path="sankalan_update_prefs.xml" />
+    <exclude domain="database" path="sankalan_local.db" />
 </full-backup-content>

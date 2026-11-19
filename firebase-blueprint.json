@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Sankalan-t user account record created upon Google/Gmail sign-in.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "email": {
+          "type": "string",
+          "description": "Verified Gmail address associated with the account (PII; owner-only)."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User's chosen display name shown on their profile and feedback."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional profile avatar URL from Google account."
+        },
+        "authProvider": {
+          "type": "string",
+          "enum": ["google"],
+          "description": "Authentication provider identifier."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp() when account is created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp() on profile updates."
+        }
+      },
+      "required": [
+        "userId",
+        "email",
+        "displayName",
+        "authProvider",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FeedbackEntry": {
+      "title": "FeedbackEntry",
+      "description": "Community feedback entry posted from Settings Feedback Bar and visible to signed-in users.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the feedback author."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Public author display name (no email/PII stored)."
+        },
+        "message": {
+          "type": "string",
+          "description": "Feedback comment text (1 to 500 characters)."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["general", "feature", "bug", "love"],
+          "description": "Feedback category tag."
+        },
+        "rating": {
+          "type": "integer",
+          "description": "Star rating from 1 to 5."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published"],
+          "description": "Publication state used for rule-enforced community listing."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp() when feedback is posted."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp() on feedback edit."
+        }
+      },
+      "required": [
+        "userId",
+        "authorName",
+        "message",
+        "category",
+        "rating",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Owner-isolated user account profiles storing Gmail and display name."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": {
+        "$ref": "#/entities/FeedbackEntry"
+      },
+      "description": "Community feedback comments posted via the Settings feedback bar."
+    }
+  }
+}

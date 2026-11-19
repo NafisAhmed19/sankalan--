@@ -378,6 +378,42 @@ interface SankalanStrings {
   val ownerEmailLabel: String
   val ownerEmailAddress: String
   val ownerCraftTagline: String
+
+  // Cloud Auth, Account Creation & Settings Feedback Bar
+  val authTitle: String
+  val authSubtitle: String
+  val authSignInWithGoogleButton: String
+  val authCreateAccountButton: String
+  val authCreateConfirmButton: String
+  val authBackToExistingSignIn: String
+  val authDisplayNameInputLabel: String
+  val authDisplayNameInputHint: String
+  val authGmailAutoAccountHint: String
+  val authFacebookManualNote: String
+  val accountCardTitle: String
+  val accountGmailLabel: String
+  val accountNameLabel: String
+  val accountSaveNameBtn: String
+  val accountNameSavedMsg: String
+  val accountNameErrorMsg: String
+  val accountSwitchBtn: String
+  val accountSignOutBtn: String
+  val feedbackSectionTitle: String
+  val feedbackSectionSubtitle: String
+  val feedbackInputHint: String
+  val feedbackSubmitBtn: String
+  val feedbackSubmittingBtn: String
+  val feedbackSuccessMsg: String
+  val feedbackErrorMsg: String
+  val feedbackCatGeneral: String
+  val feedbackCatFeature: String
+  val feedbackCatBug: String
+  val feedbackCatLove: String
+  val feedbackCommentsTitle: String
+  val feedbackScrollHint: String
+  val feedbackEmptyLabel: String
+  val feedbackDeleteBtn: String
+  val feedbackYouBadge: String
 }
 
 object StringsEn : SankalanStrings {
@@ -740,6 +776,41 @@ object StringsEn : SankalanStrings {
   override val ownerEmailLabel = "Contact Email"
   override val ownerEmailAddress = "nafisahmeddn@gmail.com"
   override val ownerCraftTagline = "Built offline-first with quiet craft, warmth, and respect for your private memories."
+
+  override val authTitle = "Sign In or Create Account"
+  override val authSubtitle = "Use any Gmail account to keep your profile and community feedback synced securely."
+  override val authSignInWithGoogleButton = "Sign in with Google (Gmail)"
+  override val authCreateAccountButton = "Create Account with Gmail"
+  override val authCreateConfirmButton = "Create Account & Continue"
+  override val authBackToExistingSignIn = "Back to Quick Google Sign-In"
+  override val authDisplayNameInputLabel = "Your Display Name"
+  override val authDisplayNameInputHint = "e.g., Nafis Ahmed"
+  override val authGmailAutoAccountHint = "Any Gmail account automatically registers your Sankalan-t profile in Firebase."
+  override val authFacebookManualNote = "Facebook Login requires adding your Meta App ID & Secret manually in Firebase Console."
+  override val accountCardTitle = "Account & Gmail Profile"
+  override val accountGmailLabel = "Signed-in Gmail"
+  override val accountNameLabel = "Profile Name"
+  override val accountSaveNameBtn = "Update Name"
+  override val accountNameSavedMsg = "Profile name updated in cloud."
+  override val accountNameErrorMsg = "Could not update profile name."
+  override val accountSwitchBtn = "Switch / Create Gmail Account"
+  override val accountSignOutBtn = "Sign Out"
+  override val feedbackSectionTitle = "Community Feedback Bar"
+  override val feedbackSectionSubtitle = "Share ideas or thoughts and scroll below to read what other readers shared."
+  override val feedbackInputHint = "Write your feedback or suggestion…"
+  override val feedbackSubmitBtn = "Post Feedback"
+  override val feedbackSubmittingBtn = "Posting…"
+  override val feedbackSuccessMsg = "Thank you! Your feedback is now visible below."
+  override val feedbackErrorMsg = "Could not post feedback. Check connection."
+  override val feedbackCatGeneral = "General"
+  override val feedbackCatFeature = "Idea"
+  override val feedbackCatBug = "Issue"
+  override val feedbackCatLove = "Praise"
+  override val feedbackCommentsTitle = "Recent Reader Comments"
+  override val feedbackScrollHint = "Scroll to read more"
+  override val feedbackEmptyLabel = "No comments yet — be the first to leave feedback above!"
+  override val feedbackDeleteBtn = "Delete"
+  override val feedbackYouBadge = "You"
 }
 
 object StringsBnBd : SankalanStrings {
@@ -1102,6 +1173,41 @@ object StringsBnBd : SankalanStrings {
   override val ownerEmailLabel = "যোগাযোগ ইমেইল"
   override val ownerEmailAddress = "nafisahmeddn@gmail.com"
   override val ownerCraftTagline = "আপনার ব্যক্তিগত স্মৃতি ও অনুভূতির সম্পূর্ণ গোপনীয়তা নিশ্চিত করে অফলাইন-ফার্স্ট ভালোবাসায় নির্মিত।"
+
+  override val authTitle = "জিমেইল লগইন ও অ্যাকাউন্ট তৈরি"
+  override val authSubtitle = "অ্যাপে প্রবেশ করতে এবং আপনার প্রোফাইল ও ফিডব্যাক সংরক্ষণ করতে যেকোনো Gmail দিয়ে যুক্ত হোন।"
+  override val authSignInWithGoogleButton = "Google (Gmail) দিয়ে লগইন করুন"
+  override val authCreateAccountButton = "নতুন অ্যাকাউন্ট তৈরি করুন (Gmail)"
+  override val authCreateConfirmButton = "অ্যাকাউন্ট তৈরি করে প্রবেশ করুন"
+  override val authBackToExistingSignIn = "সরাসরি জিমেইল লগইনে ফিরুন"
+  override val authDisplayNameInputLabel = "আপনার প্রোফাইল নাম"
+  override val authDisplayNameInputHint = "যেমন: নাফিস আহমেদ"
+  override val authGmailAutoAccountHint = "যেকোনো Gmail দিয়ে প্রথমবার ঢুকলেই অটোমেটিক নতুন অ্যাকাউন্ট ও প্রোফাইল তৈরি হয়ে যাবে।"
+  override val authFacebookManualNote = "নোট: Facebook লগইন চালু করতে চাইলে পরবর্তীতে Firebase Console-এ Meta App ID ও Secret যোগ করতে হবে।"
+  override val accountCardTitle = "অ্যাকাউন্ট ও জিমেইল প্রোফাইল"
+  override val accountGmailLabel = "লগইন করা জিমেইল"
+  override val accountNameLabel = "প্রোফাইল নাম"
+  override val accountSaveNameBtn = "নাম সংরক্ষণ"
+  override val accountNameSavedMsg = "প্রোফাইল নাম সফলভাবে আপডেট হয়েছে।"
+  override val accountNameErrorMsg = "প্রোফাইল নাম আপডেট করা যায়নি।"
+  override val accountSwitchBtn = "অন্য Gmail / নতুন অ্যাকাউন্ট খুলুন"
+  override val accountSignOutBtn = "লগআউট"
+  override val feedbackSectionTitle = "ফিডব্যাক বার ও পাঠকদের মতামত"
+  override val feedbackSectionSubtitle = "আপনার মতামত লিখুন এবং নিচে স্ক্রল করে অন্যান্য ব্যবহারকারীদের কমেন্ট দেখুন।"
+  override val feedbackInputHint = "আপনার ফিডব্যাক বা পরামর্শ এখানে লিখুন…"
+  override val feedbackSubmitBtn = "পাঠান"
+  override val feedbackSubmittingBtn = "পাঠানো হচ্ছে…"
+  override val feedbackSuccessMsg = "ধন্যবাদ! আপনার ফিডব্যাক নিচে যুক্ত হয়েছে।"
+  override val feedbackErrorMsg = "ফিডব্যাক পাঠানো যায়নি। ইন্টারনেট সংযোগ দেখুন।"
+  override val feedbackCatGeneral = "সাধারণ"
+  override val feedbackCatFeature = "নতুন ফিচার"
+  override val feedbackCatBug = "সমস্যা"
+  override val feedbackCatLove = "ভালোবাসা"
+  override val feedbackCommentsTitle = "ব্যবহারকারীদের কমেন্টসমূহ"
+  override val feedbackScrollHint = "স্ক্রল করে আরও দেখুন"
+  override val feedbackEmptyLabel = "এখনো কোনো কমেন্ট নেই — উপরের বারে প্রথম ফিডব্যাক দিন!"
+  override val feedbackDeleteBtn = "মুছুন"
+  override val feedbackYouBadge = "আপনি"
 }
 
 val LocalStrings = staticCompositionLocalOf<SankalanStrings> { StringsBnBd }
