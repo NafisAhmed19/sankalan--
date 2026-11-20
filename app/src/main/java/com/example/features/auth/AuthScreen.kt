@@ -93,12 +93,14 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
   val listener = FirebaseAuth.AuthStateListener { auth ->
@@ -148,13 +150,15 @@ fun attemptAutoSignIn(
   val request = GetCredentialRequest.Builder().addCredentialOption(googleIdOption).build()
   scope.launch {
     try {
-      val cred = credentialManager.getCredential(context, request).credential
-      if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-        val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
-        Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
-        onAuthSuccess()
-      } else {
-        onUnauthenticated()
+      withTimeout(6_000L) {
+        val cred = credentialManager.getCredential(context, request).credential
+        if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+          val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
+          Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+          onAuthSuccess()
+        } else {
+          onUnauthenticated()
+        }
       }
     } catch (_: Exception) {
       onUnauthenticated()
@@ -258,7 +262,7 @@ fun onGoogleSignInClicked(
     try {
       val response =
         try {
-          credentialManager.getCredential(activityContext, primaryRequest)
+          withTimeout(45_000L) { credentialManager.getCredential(activityContext, primaryRequest) }
         } catch (primaryError: GetCredentialException) {
           val shouldTryGoogleIdFallback =
             primaryError is NoCredentialException ||
@@ -278,17 +282,24 @@ fun onGoogleSignInClicked(
               .build()
           val fallbackRequest =
             GetCredentialRequest.Builder().addCredentialOption(fallbackOption).build()
-          credentialManager.getCredential(activityContext, fallbackRequest)
+          withTimeout(45_000L) { credentialManager.getCredential(activityContext, fallbackRequest) }
         }
 
       val cred = response.credential
       if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
         val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
-        Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+        withTimeout(20_000L) {
+          Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+        }
         onAuthSuccess()
       } else {
         onAuthError("Unexpected credential type: ${cred.type}")
       }
+    } catch (e: TimeoutCancellationException) {
+      Log.e("Auth", "Google Sign-In timed out waiting for Play Services or Firebase", e)
+      onAuthError(
+        "[Timeout] Google Play Services বা Firebase থেকে নির্ধারিত সময়ে উত্তর পাওয়া যায়নি। আপনার ইন্টারনেট সংযোগ, Google Play Services আপডেট ও ফোনে সক্রিয় Gmail অ্যাকাউন্ট আছে কি না দেখে আবার চেষ্টা করুন।"
+      )
     } catch (e: GetCredentialCancellationException) {
       Log.w(
         "Auth",
