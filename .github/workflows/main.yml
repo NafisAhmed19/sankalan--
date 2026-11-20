@@ -13,16 +13,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
-      - name: Accept Android SDK licenses
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses & ensure SDK 36.1
         run: |
-          SDK_MGR=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -n 1)
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDK_MGR=$(ls -d "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -n 1)
           yes | "$SDK_MGR" --licenses > /dev/null 2>&1 || true
+          "$SDK_MGR" "platforms;android-36.1" "build-tools;36.0.0" > /dev/null 2>&1 || true
+
+      - name: Prepare debug keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -di debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -32,7 +45,7 @@ jobs:
       - name: Build Debug APK
         env:
           JAVA_OPTS: "-Djava.awt.headless=true"
-        run: gradle :app:assembleDebug -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=true"
+        run: gradle :app:assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=1g -Djava.awt.headless=true"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
