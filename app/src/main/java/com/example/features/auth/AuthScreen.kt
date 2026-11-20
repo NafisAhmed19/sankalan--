@@ -3,6 +3,8 @@ package com.example.features.auth
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -91,6 +93,7 @@ import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
+import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -195,7 +198,32 @@ private fun isTechnicalCancellation(e: GetCredentialCancellationException): Bool
   return technicalKeywords.any { detail.contains(it) }
 }
 
-private fun formatAuthError(e: Throwable): String {
+@Suppress("DEPRECATION")
+private fun readApkSha1Fingerprint(context: Context): String? =
+  runCatching {
+    val pkgInfo =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        context.packageManager.getPackageInfo(
+          context.packageName,
+          PackageManager.GET_SIGNING_CERTIFICATES,
+        )
+      } else {
+        context.packageManager.getPackageInfo(
+          context.packageName,
+          PackageManager.GET_SIGNATURES,
+        )
+      }
+    val certBytes =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        pkgInfo.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+      } else {
+        pkgInfo.signatures?.firstOrNull()?.toByteArray()
+      } ?: return@runCatching null
+    val digest = MessageDigest.getInstance("SHA-1").digest(certBytes)
+    digest.joinToString(":") { "%02X".format(it) }
+  }.getOrNull()
+
+private fun formatAuthError(e: Throwable, context: Context? = null): String {
   val rawCodeAndDetail =
     when (e) {
       is FirebaseAuthException ->
@@ -213,8 +241,23 @@ private fun formatAuthError(e: Throwable): String {
     }
 
   val lower = rawCodeAndDetail.lowercase()
+  val sha1Info =
+    if (context != null &&
+      (lower.contains("16") ||
+        lower.contains("reauth") ||
+        lower.contains("28444") ||
+        lower.contains("developer") ||
+        lower.contains("10:") ||
+        lower.contains("sha"))
+    ) {
+      readApkSha1Fingerprint(context)?.let { "\n\nএই APK-র আসল SHA-1:\n$it" } ?: ""
+    } else {
+      ""
+    }
   val hint =
     when {
+      lower.contains("reauth") || lower.contains("[16]") ->
+        "\n\nসম্ভাব্য কারণ:\n১) এই APK-র SHA-1 ফিঙ্গারপ্রিন্ট Firebase / Google Cloud-এর Android Client-এ যুক্ত SHA-1-এর সাথে মিলছে না (যেমন GitHub-এ debug.keystore.base64 না থাকলে)।\n২) অথবা ফোনের Google Play Services ক্যাশ / Gmail অ্যাকাউন্টের রি-অথেনটিকেশন আটকে আছে (Play Services Cache ক্লিয়ার করে বা Play Store চেক করে আবার চেষ্টা করুন)।"
       lower.contains("28444") ||
         lower.contains("developer") ||
         lower.contains("10:") ||
@@ -231,7 +274,7 @@ private fun formatAuthError(e: Throwable): String {
       else -> ""
     }
 
-  return rawCodeAndDetail + hint
+  return rawCodeAndDetail + sha1Info + hint
 }
 
 fun onGoogleSignInClicked(
@@ -267,7 +310,9 @@ fun onGoogleSignInClicked(
           val shouldTryGoogleIdFallback =
             primaryError is NoCredentialException ||
               primaryError is GetCredentialUnsupportedException ||
-              primaryError is GetCredentialProviderConfigurationException
+              primaryError is GetCredentialProviderConfigurationException ||
+              (primaryError is GetCredentialCancellationException &&
+                isTechnicalCancellation(primaryError))
           if (!shouldTryGoogleIdFallback) throw primaryError
           Log.w(
             "Auth",
@@ -282,7 +327,16 @@ fun onGoogleSignInClicked(
               .build()
           val fallbackRequest =
             GetCredentialRequest.Builder().addCredentialOption(fallbackOption).build()
-          withTimeout(45_000L) { credentialManager.getCredential(activityContext, fallbackRequest) }
+          try {
+            withTimeout(45_000L) { credentialManager.getCredential(activityContext, fallbackRequest) }
+          } catch (fallbackError: Exception) {
+            Log.w(
+              "Auth",
+              "Fallback GetGoogleIdOption also failed (${fallbackError::class.simpleName}): ${fallbackError.message}",
+              fallbackError,
+            )
+            throw if (primaryError is NoCredentialException) fallbackError else primaryError
+          }
         }
 
       val cred = response.credential
@@ -307,13 +361,13 @@ fun onGoogleSignInClicked(
         e,
       )
       if (isTechnicalCancellation(e)) {
-        onAuthError(formatAuthError(e))
+        onAuthError(formatAuthError(e, context))
       } else {
         onAuthCancelled()
       }
     } catch (e: Exception) {
       Log.e("Auth", "Google Sign-In failed", e)
-      onAuthError(formatAuthError(e))
+      onAuthError(formatAuthError(e, context))
     }
   }
 }
