@@ -13,6 +13,7 @@ import com.example.core.model.Page
 import com.example.core.model.ReadingLayout
 import com.example.features.memorylane.MemoryLaneCurator
 import com.example.features.memorylane.MemoryLaneReason
+import com.example.features.memorylane.MemoryPageTurnMath
 import com.example.features.reading.PageTurnPhysics
 import com.example.features.reading.ReadingSlot
 import com.example.features.reading.ReadingSlotBuilder
@@ -128,6 +129,93 @@ class MemoryLaneAndReadingModeTest {
     assertEquals(MemoryLaneReason.PINNED, curated[1].reason)
     assertEquals("p-curated", curated[2].page.id)
     assertEquals(MemoryLaneReason.CURATED, curated[2].reason)
+  }
+
+  @Test
+  fun `rotating memory lane feed picks one random entry per non-archived book and varies across rounds`() {
+    fun buildBook(id: String, archived: Boolean = false, pageCount: Int = 4): DiaryWithPages {
+      val pages =
+        (0 until pageCount).map { idx ->
+          Page(
+            id = "$id-p$idx",
+            diaryId = id,
+            order = idx,
+            dateIso = "2026-03-0${idx + 1}",
+            title = "$id entry $idx",
+            elements = listOf(CanvasElement(id = "$id-e$idx", type = "text", text = "Note $idx")),
+          )
+        }
+      return DiaryWithPages(
+        diary = Diary(id = id, title = "Book $id", pageIds = pages.map { it.id }, archived = archived),
+        pages = pages,
+      )
+    }
+
+    val book1 = buildBook("b1")
+    val book2 = buildBook("b2")
+    val book3 = buildBook("b3")
+    val archivedBook = buildBook("b-arch", archived = true)
+    val library = listOf(book1, archivedBook, book2, book3)
+
+    val roundOne = MemoryLaneCurator.buildRotatingLibraryFeed(diaries = library, roundSeed = 101L)
+    assertEquals(3, roundOne.size)
+    assertEquals(setOf("b1", "b2", "b3"), roundOne.map { it.diaryWithPages.diary.id }.toSet())
+    assertFalse(roundOne.any { it.diaryWithPages.diary.id == "b-arch" })
+
+    val selectedAcrossRounds =
+      (1L..12L).map { seed ->
+        MemoryLaneCurator.buildRotatingLibraryFeed(diaries = library, roundSeed = seed * 997L)
+      }
+    val uniquePageIdsForB1 =
+      selectedAcrossRounds.map { feed -> feed.first { it.diaryWithPages.diary.id == "b1" }.page.id }.toSet()
+    val uniqueFirstBooks = selectedAcrossRounds.map { feed -> feed.first().diaryWithPages.diary.id }.toSet()
+    assertTrue("Expected random page selection across rounds", uniquePageIdsForB1.size > 1)
+    assertTrue("Expected book rotation order to vary across rounds", uniqueFirstBooks.size > 1)
+  }
+
+  @Test
+  fun `memory lane 3d page turn math transitions smoothly across spine with symmetric faces and lighting`() {
+    // Forward turn: Phase 1 lifts right page (pivotX = 0f, rotationY: 0 -> -90)
+    val fwdStart = MemoryPageTurnMath.computeFrame(progress = 0f, direction = 1)
+    assertFalse(fwdStart.showBackFace)
+    assertFalse(fwdStart.leafOnLeftHalf)
+    assertEquals(0f, fwdStart.pivotX, 0.001f)
+    assertEquals(0f, fwdStart.rotationYDeg, 0.01f)
+    assertEquals(0f, fwdStart.shadowAlpha, 0.001f)
+
+    val fwdQuarter = MemoryPageTurnMath.computeFrame(progress = 0.25f, direction = 1)
+    assertFalse(fwdQuarter.showBackFace)
+    assertFalse(fwdQuarter.leafOnLeftHalf)
+    assertEquals(-45f, fwdQuarter.rotationYDeg, 0.01f)
+    assertTrue(fwdQuarter.shadowAlpha > 0.2f)
+    assertTrue(fwdQuarter.highlightAlpha > 0.25f)
+    assertTrue(fwdQuarter.liftTranslationYDp < 0f)
+
+    // Forward turn: Phase 2 lowers back face onto left page (pivotX = 1f, rotationY: +90 -> 0)
+    val fwdThreeQuarter = MemoryPageTurnMath.computeFrame(progress = 0.75f, direction = 1)
+    assertTrue(fwdThreeQuarter.showBackFace)
+    assertTrue(fwdThreeQuarter.leafOnLeftHalf)
+    assertEquals(1f, fwdThreeQuarter.pivotX, 0.001f)
+    assertEquals(45f, fwdThreeQuarter.rotationYDeg, 0.01f)
+
+    val fwdEnd = MemoryPageTurnMath.computeFrame(progress = 1f, direction = 1)
+    assertTrue(fwdEnd.showBackFace)
+    assertTrue(fwdEnd.leafOnLeftHalf)
+    assertEquals(0f, fwdEnd.rotationYDeg, 0.01f)
+    assertEquals(0f, fwdEnd.shadowAlpha, 0.001f)
+
+    // Backward turn: Phase 1 lifts left page (+90), Phase 2 lowers onto right page (-90 -> 0)
+    val backQuarter = MemoryPageTurnMath.computeFrame(progress = 0.25f, direction = -1)
+    assertFalse(backQuarter.showBackFace)
+    assertTrue(backQuarter.leafOnLeftHalf)
+    assertEquals(1f, backQuarter.pivotX, 0.001f)
+    assertEquals(45f, backQuarter.rotationYDeg, 0.01f)
+
+    val backThreeQuarter = MemoryPageTurnMath.computeFrame(progress = 0.75f, direction = -1)
+    assertTrue(backThreeQuarter.showBackFace)
+    assertFalse(backThreeQuarter.leafOnLeftHalf)
+    assertEquals(0f, backThreeQuarter.pivotX, 0.001f)
+    assertEquals(-45f, backThreeQuarter.rotationYDeg, 0.01f)
   }
 
   @Test
