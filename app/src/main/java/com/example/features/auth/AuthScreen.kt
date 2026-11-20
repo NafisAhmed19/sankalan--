@@ -2,6 +2,7 @@ package com.example.features.auth
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
@@ -65,6 +67,10 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
+import androidx.credentials.exceptions.GetCredentialUnsupportedException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
 import com.example.core.i18n.LocalStrings
 import com.example.core.model.AppLanguage
@@ -77,9 +83,11 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
@@ -154,6 +162,74 @@ fun attemptAutoSignIn(
   }
 }
 
+private tailrec fun Context.findActivity(): Activity? =
+  when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+  }
+
+private fun isTechnicalCancellation(e: GetCredentialCancellationException): Boolean {
+  val detail = "${e.errorMessage ?: ""} ${e.message ?: ""}".lowercase()
+  if (detail.isBlank()) return false
+  val technicalKeywords =
+    listOf(
+      "28444",
+      "developer",
+      "reauth",
+      "blocked",
+      "cooldown",
+      "sha",
+      "config",
+      "403",
+      "access_denied",
+      "failed",
+      "error",
+      "[16]",
+      "[10]",
+    )
+  return technicalKeywords.any { detail.contains(it) }
+}
+
+private fun formatAuthError(e: Throwable): String {
+  val rawCodeAndDetail =
+    when (e) {
+      is FirebaseAuthException ->
+        "[FirebaseAuth/${e.errorCode}] ${e.localizedMessage ?: e.message ?: "Authentication failed"}"
+      is GoogleIdTokenParsingException ->
+        "[GoogleIdTokenParsing] ${e.localizedMessage ?: e.message ?: "Invalid Google ID token"}"
+      is GetCredentialException -> {
+        val detail = e.errorMessage?.toString()?.takeIf { it.isNotBlank() }
+          ?: e.localizedMessage
+          ?: e.message
+          ?: "Credential request failed"
+        "[${e::class.simpleName ?: "CredentialError"} | ${e.type}] $detail"
+      }
+      else -> "[${e::class.simpleName ?: "AuthError"}] ${e.localizedMessage ?: e.message ?: "Sign in failed"}"
+    }
+
+  val lower = rawCodeAndDetail.lowercase()
+  val hint =
+    when {
+      lower.contains("28444") ||
+        lower.contains("developer") ||
+        lower.contains("10:") ||
+        lower.contains("sha") ->
+        "\n\nসম্ভাব্য কারণ: Firebase Console-এ এই অ্যাপের SHA-1 / SHA-256 যুক্ত নেই অথবা OAuth Consent Screen এখনো Testing মোডে আছে (Test user হিসেবে আপনার Gmail যোগ করুন)।"
+      lower.contains("operation_not_allowed") || lower.contains("operation-not-allowed") ->
+        "\n\nসম্ভাব্য কারণ: Firebase Console -> Authentication -> Sign-in method এ Google প্রোভাইডারটি Enable করা নেই।"
+      lower.contains("nocredential") || lower.contains("no credentials") ->
+        "\n\nসম্ভাব্য কারণ: ফোনে কোনো সক্রিয় Google/Gmail অ্যাকাউন্ট পাওয়া যায়নি বা Google Play Services আপডেট প্রয়োজন।"
+      lower.contains("blocked") || lower.contains("cooldown") ->
+        "\n\nসম্ভাব্য কারণ: পরপর কয়েকবার বাতিল হওয়ায় Google Sign-In সাময়িকভাবে বিরতিতে আছে। কিছুক্ষণ পর আবার চেষ্টা করুন।"
+      lower.contains("network") ->
+        "\n\nসম্ভাব্য কারণ: Google/Firebase সার্ভারে ইন্টারনেট সংযোগ পাওয়া যায়নি।"
+      else -> ""
+    }
+
+  return rawCodeAndDetail + hint
+}
+
 fun onGoogleSignInClicked(
   context: Context,
   credentialManager: CredentialManager,
@@ -174,25 +250,59 @@ fun onGoogleSignInClicked(
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
       }
+  val activityContext = context.findActivity() ?: context
   val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-  val request = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+  val primaryRequest = GetCredentialRequest.Builder().addCredentialOption(signInOption).build()
+
   scope.launch {
     try {
-      val activityContext = (context as? Activity) ?: context
-      val cred = credentialManager.getCredential(activityContext, request).credential
+      val response =
+        try {
+          credentialManager.getCredential(activityContext, primaryRequest)
+        } catch (primaryError: GetCredentialException) {
+          val shouldTryGoogleIdFallback =
+            primaryError is NoCredentialException ||
+              primaryError is GetCredentialUnsupportedException ||
+              primaryError is GetCredentialProviderConfigurationException
+          if (!shouldTryGoogleIdFallback) throw primaryError
+          Log.w(
+            "Auth",
+            "Primary GetSignInWithGoogleOption failed (${primaryError::class.simpleName}: ${primaryError.errorMessage}); trying GetGoogleIdOption fallback",
+            primaryError,
+          )
+          val fallbackOption =
+            GetGoogleIdOption.Builder()
+              .setFilterByAuthorizedAccounts(false)
+              .setServerClientId(clientId)
+              .setAutoSelectEnabled(false)
+              .build()
+          val fallbackRequest =
+            GetCredentialRequest.Builder().addCredentialOption(fallbackOption).build()
+          credentialManager.getCredential(activityContext, fallbackRequest)
+        }
+
+      val cred = response.credential
       if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
         val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
         Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
         onAuthSuccess()
       } else {
-        onAuthError("Unexpected credential type")
+        onAuthError("Unexpected credential type: ${cred.type}")
       }
     } catch (e: GetCredentialCancellationException) {
-      Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
-      onAuthCancelled()
+      Log.w(
+        "Auth",
+        "Google Sign-In flow cancelled or dismissed (${e.type}): ${e.errorMessage ?: e.message}",
+        e,
+      )
+      if (isTechnicalCancellation(e)) {
+        onAuthError(formatAuthError(e))
+      } else {
+        onAuthCancelled()
+      }
     } catch (e: Exception) {
       Log.e("Auth", "Google Sign-In failed", e)
-      onAuthError(e.localizedMessage ?: "Sign in failed")
+      onAuthError(formatAuthError(e))
     }
   }
 }
@@ -226,8 +336,9 @@ fun AuthScreen(
   val strings = LocalStrings.current
   val palette = LocalSankalanPalette.current
   val context = LocalContext.current
+  val activityContext = remember(context) { context.findActivity() ?: context }
   val scope = rememberCoroutineScope()
-  val credentialManager = remember(context) { CredentialManager.create(context) }
+  val credentialManager = remember(activityContext) { CredentialManager.create(activityContext) }
 
   val firebaseReady = remember(context) { isFirebaseInitialized(context) }
   var isLoading by remember { mutableStateOf(false) }
@@ -484,12 +595,14 @@ fun AuthScreen(
                 border = BorderStroke(1.dp, SankalanTokens.Terracotta.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth().testTag("auth_error_banner"),
               ) {
-                Text(
-                  text = errorMsg!!,
-                  style = MaterialTheme.typography.bodySmall,
-                  color = SankalanTokens.Terracotta,
-                  modifier = Modifier.padding(SankalanSpacing.sm),
-                )
+                SelectionContainer {
+                  Text(
+                    text = errorMsg!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SankalanTokens.Terracotta,
+                    modifier = Modifier.padding(SankalanSpacing.sm),
+                  )
+                }
               }
             }
 
