@@ -118,11 +118,13 @@ import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanTheme
 import com.example.ui.theme.SankalanTokens
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 object SankalanRoutes {
@@ -203,9 +205,13 @@ fun SankalanApp() {
   val settingsRepo = remember(context) { SettingsRepository(context.applicationContext) }
   val preAuthSettings by
     settingsRepo.settingsFlow.collectAsStateWithLifecycle(initialValue = AppSettings())
+  val isFirebaseInitialized = remember(context) { FirebaseApp.getApps(context).isNotEmpty() }
   val authUser by
-    remember { Firebase.auth.authStateFlow() }
-      .collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
+    remember(isFirebaseInitialized) {
+      if (isFirebaseInitialized) Firebase.auth.authStateFlow() else flowOf(null)
+    }.collectAsStateWithLifecycle(
+      initialValue = if (isFirebaseInitialized) Firebase.auth.currentUser else null
+    )
   var pendingDisplayName by remember { mutableStateOf<String?>(null) }
   val rootScope = rememberCoroutineScope()
 

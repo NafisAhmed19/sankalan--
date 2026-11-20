@@ -78,6 +78,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -106,6 +107,9 @@ private fun resolveWebClientId(context: Context): String? {
   return runCatching { context.getString(resId) }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
+private fun isFirebaseInitialized(context: Context): Boolean =
+  runCatching { FirebaseApp.getApps(context).isNotEmpty() }.getOrDefault(false)
+
 fun attemptAutoSignIn(
   context: Context,
   credentialManager: CredentialManager,
@@ -113,6 +117,10 @@ fun attemptAutoSignIn(
   onUnauthenticated: () -> Unit,
   scope: CoroutineScope,
 ) {
+  if (!isFirebaseInitialized(context)) {
+    onUnauthenticated()
+    return
+  }
   if (Firebase.auth.currentUser != null) {
     onAuthSuccess()
     return
@@ -154,6 +162,12 @@ fun onGoogleSignInClicked(
   scope: CoroutineScope,
   onAuthCancelled: () -> Unit = {},
 ) {
+  if (!isFirebaseInitialized(context)) {
+    onAuthError(
+      "Firebase config (google-services.json) missing in this APK build. Add GOOGLE_SERVICES_JSON secret on GitHub and rebuild."
+    )
+    return
+  }
   val clientId =
     resolveWebClientId(context)
       ?: run {
@@ -195,7 +209,7 @@ fun signOutFromCloud(
       } catch (e: Exception) {
         Log.w("Auth", "Failed to clear credential state: ${e.message}")
       } finally {
-        Firebase.auth.signOut()
+        runCatching { Firebase.auth.signOut() }
         onSignOutComplete()
       }
     }
@@ -215,19 +229,31 @@ fun AuthScreen(
   val scope = rememberCoroutineScope()
   val credentialManager = remember(context) { CredentialManager.create(context) }
 
+  val firebaseReady = remember(context) { isFirebaseInitialized(context) }
   var isLoading by remember { mutableStateOf(false) }
   var isCreatingAccountMode by remember { mutableStateOf(false) }
   var customAccountName by remember { mutableStateOf("") }
-  var errorMsg by remember { mutableStateOf<String?>(null) }
-
-  LaunchedEffect(Unit) {
-    attemptAutoSignIn(
-      context = context,
-      credentialManager = credentialManager,
-      onAuthSuccess = onAuthSuccess,
-      onUnauthenticated = {},
-      scope = scope,
+  var errorMsg by remember(firebaseReady, currentLanguage) {
+    mutableStateOf<String?>(
+      if (firebaseReady) null
+      else if (currentLanguage == AppLanguage.BN_BD) {
+        "এই APK-তে Firebase কনফিগারেশন (google-services.json) যুক্ত করা হয়নি। GitHub-এ GOOGLE_SERVICES_JSON সিক্রেট বা app/google-services.json যোগ করে নতুন করে APK বিল্ড করুন।"
+      } else {
+        "Firebase configuration (google-services.json) is missing in this APK build. Add GOOGLE_SERVICES_JSON secret on GitHub and rebuild."
+      }
     )
+  }
+
+  LaunchedEffect(firebaseReady) {
+    if (firebaseReady) {
+      attemptAutoSignIn(
+        context = context,
+        credentialManager = credentialManager,
+        onAuthSuccess = onAuthSuccess,
+        onUnauthenticated = {},
+        scope = scope,
+      )
+    }
   }
 
   fun launchGoogleAuth(customName: String?) {
