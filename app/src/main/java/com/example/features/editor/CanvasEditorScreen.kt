@@ -29,15 +29,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +74,8 @@ import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.FormatUnderlined
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.OpenWith
@@ -537,7 +543,7 @@ fun CanvasEditorScreen(
 
   Dialog(
     onDismissRequest = { closeEditorCleanly() },
-    properties = DialogProperties(usePlatformDefaultWidth = false),
+    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
   ) {
     Surface(
       color = palette.background,
@@ -548,7 +554,13 @@ fun CanvasEditorScreen(
         modifier = Modifier.fillMaxSize(),
         showOrnamentFrame = false,
       ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+          modifier =
+            Modifier
+              .fillMaxSize()
+              .windowInsetsPadding(WindowInsets.safeDrawing)
+              .imePadding(),
+        ) {
         // 1. Top Editor Bar (Close, Page/Save pill, Undo, Redo, Done)
         Surface(
           color = palette.shelfSurface,
@@ -616,12 +628,17 @@ fun CanvasEditorScreen(
                   contentColor = SankalanTokens.Walnut900,
                 ),
               shape = MaterialTheme.shapes.small,
-              contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
               modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_done_button"),
             ) {
               Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
               Spacer(modifier = Modifier.width(4.dp))
-              Text(text = strings.editorDone, style = MaterialTheme.typography.labelMedium)
+              Text(
+                text = strings.editorDone,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+              )
             }
           }
         }
@@ -684,6 +701,8 @@ fun CanvasEditorScreen(
         var workspacePxSize by remember { mutableStateOf(IntSize(1, 1)) }
         var isOrbExpanded by remember { mutableStateOf(false) }
 
+        var isInspectorCollapsed by remember { mutableStateOf(false) }
+
         Box(
           modifier =
             Modifier
@@ -693,6 +712,7 @@ fun CanvasEditorScreen(
         ) {
           BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isWideWorkspace = maxWidth >= 720.dp
+            val phoneInspectorMaxHeight = (maxHeight * 0.34f).coerceIn(104.dp, 220.dp)
 
             val canvasStageContent: @Composable () -> Unit = {
               InteractiveCanvasStage(
@@ -788,7 +808,12 @@ fun CanvasEditorScreen(
             } else {
               Column(modifier = Modifier.fillMaxSize()) {
                 Box(
-                  modifier = Modifier.weight(1f).fillMaxWidth().padding(SankalanSpacing.md),
+                  modifier =
+                    Modifier
+                      .weight(1f)
+                      .fillMaxWidth()
+                      .heightIn(min = 120.dp)
+                      .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.xs),
                   contentAlignment = Alignment.Center,
                 ) {
                   canvasStageContent()
@@ -799,20 +824,59 @@ fun CanvasEditorScreen(
                   border = BorderStroke(1.dp, palette.borderGold),
                   modifier = Modifier.fillMaxWidth(),
                 ) {
-                  Column(modifier = Modifier.padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.sm)) {
-                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 218.dp).verticalScroll(rememberScrollState())) {
-                      inspectorBlock()
+                  Column(
+                    modifier =
+                      Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SankalanSpacing.sm, vertical = SankalanSpacing.xs),
+                  ) {
+                    AnimatedVisibility(visible = !isInspectorCollapsed) {
+                      Box(
+                        modifier =
+                          Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = phoneInspectorMaxHeight)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = SankalanSpacing.xs, vertical = SankalanSpacing.xs)
+                            .padding(bottom = 8.dp),
+                      ) {
+                        inspectorBlock()
+                      }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    EditorModeTabsStrip(
-                      toolMode = toolMode,
-                      onSelectMode = { nextMode ->
-                        if (nextMode != EditorToolMode.TEXT && nextMode != EditorToolMode.SELECT) {
-                          commitInlineEditingIfActive()
-                        }
-                        toolMode = nextMode
-                      },
-                    )
+
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                      Box(modifier = Modifier.weight(1f)) {
+                        EditorModeTabsStrip(
+                          toolMode = toolMode,
+                          onSelectMode = { nextMode ->
+                            if (nextMode != EditorToolMode.TEXT && nextMode != EditorToolMode.SELECT) {
+                              commitInlineEditingIfActive()
+                            }
+                            toolMode = nextMode
+                            isInspectorCollapsed = false
+                          },
+                        )
+                      }
+                      IconButton(
+                        onClick = { isInspectorCollapsed = !isInspectorCollapsed },
+                        modifier =
+                          Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("editor_toggle_inspector_button"),
+                      ) {
+                        Icon(
+                          imageVector =
+                            if (isInspectorCollapsed) Icons.Outlined.KeyboardArrowUp
+                            else Icons.Outlined.KeyboardArrowDown,
+                          contentDescription = null,
+                          tint = palette.goldAccent,
+                        )
+                      }
+                    }
                   }
                 }
               }

@@ -237,7 +237,7 @@ fun StickerCutoutEditorDialog(
 
   Dialog(
     onDismissRequest = { if (!isSaving) onDismiss() },
-    properties = DialogProperties(usePlatformDefaultWidth = false),
+    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
   ) {
     Surface(
       color = palette.background,

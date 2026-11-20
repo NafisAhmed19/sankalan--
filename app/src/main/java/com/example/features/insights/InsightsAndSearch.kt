@@ -10,14 +10,18 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -430,18 +434,27 @@ fun GlobalSearchDialog(
 
   Dialog(
     onDismissRequest = onDismiss,
-    properties = DialogProperties(usePlatformDefaultWidth = false),
+    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
   ) {
-    Surface(
-      shape = MaterialTheme.shapes.large,
-      color = palette.cardSurface,
-      border = BorderStroke(1.dp, palette.borderGold),
-      modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 640.dp).heightIn(max = 620.dp),
+    Box(
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .windowInsetsPadding(WindowInsets.safeDrawing)
+          .imePadding()
+          .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.sm),
+      contentAlignment = Alignment.Center,
     ) {
-      Column(
-        modifier = Modifier.padding(SankalanSpacing.lg),
-        verticalArrangement = Arrangement.spacedBy(SankalanSpacing.md),
+      Surface(
+        shape = MaterialTheme.shapes.large,
+        color = palette.cardSurface,
+        border = BorderStroke(1.dp, palette.borderGold),
+        modifier = Modifier.fillMaxWidth().widthIn(max = 640.dp).heightIn(max = 620.dp),
       ) {
+        Column(
+          modifier = Modifier.padding(SankalanSpacing.lg),
+          verticalArrangement = Arrangement.spacedBy(SankalanSpacing.md),
+        ) {
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.SpaceBetween,
@@ -571,6 +584,7 @@ fun GlobalSearchDialog(
           }
         }
       }
+    }
     }
   }
 }

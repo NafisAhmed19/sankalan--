@@ -144,14 +144,20 @@ fun ParchmentPageSurface(
     }
   val sortedElements = remember(page.elements) { page.elements.filter { !it.hidden }.sortedBy { it.zIndex } }
 
-  Surface(
-    shape = pageEdgeShape,
-    color = paperBg.copy(alpha = page.background.opacity.coerceIn(0.6f, 1f)),
-    border = BorderStroke(1.2.dp, SankalanTokens.AntiqueGold.copy(alpha = 0.65f)),
-    shadowElevation = 6.dp,
-    modifier = modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = false),
-  ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+  BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+    val fitByHeight =
+      constraints.hasBoundedHeight &&
+        constraints.maxHeight > 0 &&
+        constraints.maxWidth > 0 &&
+        (constraints.maxWidth.toFloat() / constraints.maxHeight.toFloat()) > 0.72f
+    Surface(
+      shape = pageEdgeShape,
+      color = paperBg.copy(alpha = page.background.opacity.coerceIn(0.6f, 1f)),
+      border = BorderStroke(1.2.dp, SankalanTokens.AntiqueGold.copy(alpha = 0.65f)),
+      shadowElevation = 6.dp,
+      modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = fitByHeight),
+    ) {
+      BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
       val canvasW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
       val canvasH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
       val scaleFactor = (canvasW / 360.dp.value / 2.2f).coerceIn(0.45f, 1.85f)
@@ -573,6 +579,7 @@ fun ParchmentPageSurface(
       }
     }
   }
+}
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStrokePayload(payload: StrokePayload) {

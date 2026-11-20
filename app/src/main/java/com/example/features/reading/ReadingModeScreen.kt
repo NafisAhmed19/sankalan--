@@ -16,20 +16,27 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -210,7 +217,7 @@ fun ReadingModeScreen(
 
   Dialog(
     onDismissRequest = onDismiss,
-    properties = DialogProperties(usePlatformDefaultWidth = false),
+    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
   ) {
     Surface(
       color = palette.background,
@@ -219,7 +226,7 @@ fun ReadingModeScreen(
     ) {
       SankalanAtmosphericBackdrop(modifier = Modifier.fillMaxSize()) {
         Column(
-          modifier = Modifier.fillMaxSize(),
+          modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
           horizontalAlignment = Alignment.CenterHorizontally,
         ) {
           // Top Reading HUD
@@ -233,114 +240,263 @@ fun ReadingModeScreen(
               border = BorderStroke(1.dp, palette.borderGold),
               modifier = Modifier.fillMaxWidth(),
             ) {
-              Row(
-                modifier =
-                  Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-              ) {
-                IconButton(
-                  onClick = onDismiss,
-                  modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_close_button"),
-                ) {
-                  Icon(Icons.Outlined.Close, contentDescription = strings.closeLabel, tint = palette.textPrimary)
-                }
+              BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isCompactHeader = maxWidth < 600.dp
 
-                Column(modifier = Modifier.weight(1f).padding(horizontal = SankalanSpacing.xs)) {
-                  Text(
-                    text = diary.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = palette.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                  )
-                  Text(
-                    text = formatSlotLabel(currentSlot, settings.numeralStyle),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.goldAccent,
-                  )
-                }
-
-                // Single / Spread Toggle
-                OutlinedButton(
-                  onClick = {
-                    val savedId = currentPageId
-                    activeLayout =
-                      if (activeLayout == ReadingLayout.SINGLE) ReadingLayout.SPREAD
-                      else ReadingLayout.SINGLE
-                    preservedPageId = savedId
-                  },
-                  border = BorderStroke(1.dp, palette.borderGold),
-                  shape = MaterialTheme.shapes.small,
-                  contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                  modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_layout_toggle"),
-                ) {
-                  Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.MenuBook,
-                    contentDescription = strings.readingLayoutLabel,
-                    tint = palette.goldAccent,
-                    modifier = Modifier.size(16.dp),
-                  )
-                  Spacer(modifier = Modifier.width(4.dp))
-                  Text(
-                    text =
-                      if (activeLayout == ReadingLayout.SINGLE) strings.singlePageLayout
-                      else strings.twoPageSpreadLayout,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.textPrimary,
-                  )
-                }
-
-                // Page Manager Shortcut
-                IconButton(
-                  onClick = { onOpenPageManager(currentPageId) },
-                  modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_open_page_manager"),
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.CollectionsBookmark,
-                    contentDescription = strings.pageManager,
-                    tint = palette.goldAccent,
-                  )
-                }
-
-                // Edit Current Page (launches full layered CanvasEditorScreen preserving exact Page.id)
-                if (currentPageId != null) {
-                  IconButton(
-                    onClick = { onRequestEditPage(diary.id, currentPageId) },
-                    modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_edit_page_button"),
+                if (isCompactHeader) {
+                  Column(
+                    modifier =
+                      Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SankalanSpacing.sm, vertical = SankalanSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                   ) {
-                    Icon(
-                      imageVector = Icons.Outlined.Edit,
-                      contentDescription = strings.editPage,
-                      tint = palette.goldAccent,
-                    )
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                      IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_close_button"),
+                      ) {
+                        Icon(Icons.Outlined.Close, contentDescription = strings.closeLabel, tint = palette.textPrimary)
+                      }
+
+                      Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                        Text(
+                          text = diary.title,
+                          style = MaterialTheme.typography.titleMedium,
+                          color = palette.textPrimary,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                          text = formatSlotLabel(currentSlot, settings.numeralStyle),
+                          style = MaterialTheme.typography.labelSmall,
+                          color = palette.goldAccent,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                        )
+                      }
+
+                      if (currentPageId != null) {
+                        IconButton(
+                          onClick = { onRequestEditPage(diary.id, currentPageId) },
+                          modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_edit_page_button"),
+                        ) {
+                          Icon(
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = strings.editPage,
+                            tint = palette.goldAccent,
+                          )
+                        }
+                      }
+
+                      IconButton(
+                        onClick = { isFullscreen = true },
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_fullscreen_button"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Outlined.Fullscreen,
+                          contentDescription = strings.toggleFullscreenLabel,
+                          tint = palette.textPrimary,
+                        )
+                      }
+                    }
+
+                    Row(
+                      modifier =
+                        Modifier
+                          .fillMaxWidth()
+                          .horizontalScroll(rememberScrollState())
+                          .padding(horizontal = SankalanSpacing.xs, vertical = 2.dp),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                      OutlinedButton(
+                        onClick = {
+                          val savedId = currentPageId
+                          activeLayout =
+                            if (activeLayout == ReadingLayout.SINGLE) ReadingLayout.SPREAD
+                            else ReadingLayout.SINGLE
+                          preservedPageId = savedId
+                        },
+                        border = BorderStroke(1.dp, palette.borderGold),
+                        shape = MaterialTheme.shapes.small,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("reading_layout_toggle"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                          contentDescription = strings.readingLayoutLabel,
+                          tint = palette.goldAccent,
+                          modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                          text =
+                            if (activeLayout == ReadingLayout.SINGLE) strings.singlePageLayout
+                            else strings.twoPageSpreadLayout,
+                          style = MaterialTheme.typography.labelSmall,
+                          color = palette.textPrimary,
+                          maxLines = 1,
+                        )
+                      }
+
+                      OutlinedButton(
+                        onClick = { onOpenPageManager(currentPageId) },
+                        border = BorderStroke(1.dp, palette.borderSubtle),
+                        shape = MaterialTheme.shapes.small,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("reading_open_page_manager"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Outlined.CollectionsBookmark,
+                          contentDescription = strings.pageManager,
+                          tint = palette.goldAccent,
+                          modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                          text = strings.pageManager,
+                          style = MaterialTheme.typography.labelSmall,
+                          color = palette.textPrimary,
+                          maxLines = 1,
+                        )
+                      }
+
+                      OutlinedButton(
+                        onClick = { onRequestExport(currentPageId) },
+                        border = BorderStroke(1.dp, palette.borderSubtle),
+                        shape = MaterialTheme.shapes.small,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("reading_export_button"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Outlined.PictureAsPdf,
+                          contentDescription = strings.exportDiaryTitle,
+                          tint = palette.goldAccent,
+                          modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                          text = strings.exportDiaryTitle,
+                          style = MaterialTheme.typography.labelSmall,
+                          color = palette.textPrimary,
+                          maxLines = 1,
+                        )
+                      }
+                    }
                   }
-                }
+                } else {
+                  Row(
+                    modifier =
+                      Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.sm),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    IconButton(
+                      onClick = onDismiss,
+                      modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_close_button"),
+                    ) {
+                      Icon(Icons.Outlined.Close, contentDescription = strings.closeLabel, tint = palette.textPrimary)
+                    }
 
-                // Export Current Diary / Page
-                IconButton(
-                  onClick = { onRequestExport(currentPageId) },
-                  modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_export_button"),
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.PictureAsPdf,
-                    contentDescription = strings.exportDiaryTitle,
-                    tint = palette.goldAccent,
-                  )
-                }
+                    Column(modifier = Modifier.weight(1f).padding(horizontal = SankalanSpacing.xs)) {
+                      Text(
+                        text = diary.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = palette.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                      Text(
+                        text = formatSlotLabel(currentSlot, settings.numeralStyle),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.goldAccent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                      )
+                    }
 
-                // Fullscreen Toggle
-                IconButton(
-                  onClick = { isFullscreen = true },
-                  modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_fullscreen_button"),
-                ) {
-                  Icon(
-                    imageVector = Icons.Outlined.Fullscreen,
-                    contentDescription = strings.toggleFullscreenLabel,
-                    tint = palette.textPrimary,
-                  )
+                    OutlinedButton(
+                      onClick = {
+                        val savedId = currentPageId
+                        activeLayout =
+                          if (activeLayout == ReadingLayout.SINGLE) ReadingLayout.SPREAD
+                          else ReadingLayout.SINGLE
+                        preservedPageId = savedId
+                      },
+                      border = BorderStroke(1.dp, palette.borderGold),
+                      shape = MaterialTheme.shapes.small,
+                      contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                      modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_layout_toggle"),
+                    ) {
+                      Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                        contentDescription = strings.readingLayoutLabel,
+                        tint = palette.goldAccent,
+                        modifier = Modifier.size(16.dp),
+                      )
+                      Spacer(modifier = Modifier.width(4.dp))
+                      Text(
+                        text =
+                          if (activeLayout == ReadingLayout.SINGLE) strings.singlePageLayout
+                          else strings.twoPageSpreadLayout,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.textPrimary,
+                        maxLines = 1,
+                      )
+                    }
+
+                    IconButton(
+                      onClick = { onOpenPageManager(currentPageId) },
+                      modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_open_page_manager"),
+                    ) {
+                      Icon(
+                        imageVector = Icons.Outlined.CollectionsBookmark,
+                        contentDescription = strings.pageManager,
+                        tint = palette.goldAccent,
+                      )
+                    }
+
+                    if (currentPageId != null) {
+                      IconButton(
+                        onClick = { onRequestEditPage(diary.id, currentPageId) },
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_edit_page_button"),
+                      ) {
+                        Icon(
+                          imageVector = Icons.Outlined.Edit,
+                          contentDescription = strings.editPage,
+                          tint = palette.goldAccent,
+                        )
+                      }
+                    }
+
+                    IconButton(
+                      onClick = { onRequestExport(currentPageId) },
+                      modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_export_button"),
+                    ) {
+                      Icon(
+                        imageVector = Icons.Outlined.PictureAsPdf,
+                        contentDescription = strings.exportDiaryTitle,
+                        tint = palette.goldAccent,
+                      )
+                    }
+
+                    IconButton(
+                      onClick = { isFullscreen = true },
+                      modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_fullscreen_button"),
+                    ) {
+                      Icon(
+                        imageVector = Icons.Outlined.Fullscreen,
+                        contentDescription = strings.toggleFullscreenLabel,
+                        tint = palette.textPrimary,
+                      )
+                    }
+                  }
                 }
               }
             }
@@ -735,20 +891,22 @@ fun ReadingModeScreen(
                 Modifier
                   .fillMaxWidth()
                   .widthIn(max = 980.dp)
-                  .padding(horizontal = SankalanSpacing.lg, vertical = SankalanSpacing.sm),
-              verticalArrangement = Arrangement.spacedBy(SankalanSpacing.xs),
+                  .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.xs),
+              verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
               Text(
                 text = strings.tapToToggleHudHint,
                 style = MaterialTheme.typography.labelSmall,
                 color = palette.textSecondary,
                 textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
               )
 
               Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SankalanSpacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(SankalanSpacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
               ) {
                 OutlinedButton(
@@ -756,10 +914,11 @@ fun ReadingModeScreen(
                   enabled = currentSlotIndex > 0,
                   border = BorderStroke(1.dp, palette.borderGold),
                   shape = MaterialTheme.shapes.small,
+                  contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                   modifier = Modifier.weight(1f).minimumInteractiveComponentSize().testTag("reading_prev_button"),
                 ) {
-                  Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                  Spacer(modifier = Modifier.width(6.dp))
+                  Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
                   Text(text = strings.prevPageLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
 
@@ -768,9 +927,10 @@ fun ReadingModeScreen(
                   enabled = currentSlotIndex != 0,
                   border = BorderStroke(1.dp, palette.borderSubtle),
                   shape = MaterialTheme.shapes.small,
+                  contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                   modifier = Modifier.minimumInteractiveComponentSize().testTag("reading_cover_button"),
                 ) {
-                  Text(text = strings.coverLabel)
+                  Text(text = strings.coverLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
 
                 Button(
@@ -782,11 +942,12 @@ fun ReadingModeScreen(
                       contentColor = SankalanTokens.Walnut900,
                     ),
                   shape = MaterialTheme.shapes.small,
+                  contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                   modifier = Modifier.weight(1f).minimumInteractiveComponentSize().testTag("reading_next_button"),
                 ) {
                   Text(text = strings.nextPageLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                  Spacer(modifier = Modifier.width(6.dp))
-                  Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Icon(Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
               }
             }
@@ -806,24 +967,32 @@ private fun SlotContentRenderer(
 ) {
   when (slot) {
     is ReadingSlot.FrontCover -> {
-      Box(modifier = Modifier.fillMaxSize().widthIn(max = 560.dp), contentAlignment = Alignment.Center) {
+      BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().widthIn(max = 560.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        val fitByHeight = maxHeight > 0.dp && (maxWidth / maxHeight) > 0.72f
         BookCoverArt(
           diary = slot.diary,
           pageCount = slot.totalPages,
           numeralStyle = numeralStyle,
           isBack = false,
-          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = false),
+          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = fitByHeight),
         )
       }
     }
     is ReadingSlot.BackCover -> {
-      Box(modifier = Modifier.fillMaxSize().widthIn(max = 560.dp), contentAlignment = Alignment.Center) {
+      BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().widthIn(max = 560.dp),
+        contentAlignment = Alignment.Center,
+      ) {
+        val fitByHeight = maxHeight > 0.dp && (maxWidth / maxHeight) > 0.72f
         BookCoverArt(
           diary = slot.diary,
           pageCount = slot.totalPages,
           numeralStyle = numeralStyle,
           isBack = true,
-          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = false),
+          modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = fitByHeight),
         )
       }
     }
