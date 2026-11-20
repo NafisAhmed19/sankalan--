@@ -49,11 +49,19 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
+          if [ ! -f app/google-services.json ] && [ -f google-services.json ]; then
+            echo "Found root google-services.json, copying to app/google-services.json"
+            cp google-services.json app/google-services.json
+          fi
           if [ ! -f app/google-services.json ] && [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
           fi
           if [ ! -f app/google-services.json ]; then
             echo "::warning::app/google-services.json not found in repo. Commit app/google-services.json or set GOOGLE_SERVICES_JSON secret so Firebase Sign-In works in the built APK."
+          elif ! grep -q "com.aistudio.sankalant.vknrzt" app/google-services.json; then
+            echo "::warning::app/google-services.json does NOT contain package_name com.aistudio.sankalant.vknrzt — replace it with the current app/google-services.json from AI Studio!"
+          else
+            echo "Verified app/google-services.json matches com.aistudio.sankalant.vknrzt"
           fi
 
       - name: Build APK
