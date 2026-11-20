@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag (খালি রাখলে অটো version.json অনুযায়ী v1.0 নেবে)"
+        description: "Release tag (খালি রাখলে অটো v1.0 নেবে)"
         required: false
         default: ""
 
@@ -24,15 +24,13 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK licenses & ensure SDK 36.1
+      - name: Accept Android SDK licenses & ensure SDK 36
         run: |
           SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           SDK_MGR=$(ls -d "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -n 1)
           yes | "$SDK_MGR" --licenses > /dev/null 2>&1 || true
-          "$SDK_MGR" "platforms;android-36.1" "build-tools;36.0.0" > /dev/null 2>&1 || true
+          "$SDK_MGR" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
+          "$SDK_MGR" --install "platforms;android-36.1" || true
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
