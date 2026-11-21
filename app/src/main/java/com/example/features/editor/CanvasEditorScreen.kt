@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -126,8 +126,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.core.i18n.LocalStrings
 import com.example.core.i18n.formatNumber
 import com.example.core.model.AppLanguage
@@ -191,6 +189,7 @@ fun CanvasEditorScreen(
   var historyTick by remember { mutableIntStateOf(0) } // triggers recomposition for canUndo/canRedo
 
   var toolMode by remember { mutableStateOf(EditorToolMode.SELECT) }
+  var isInspectorCollapsed by remember { mutableStateOf(false) }
   var selectedElementId by remember { mutableStateOf<String?>(null) }
   var inlineEditingElementId by remember { mutableStateOf<String?>(null) }
 
@@ -338,7 +337,7 @@ fun CanvasEditorScreen(
     onDismiss()
   }
 
-  BackHandler {
+  BackHandler(enabled = pendingStickerEditor == null) {
     if (inlineEditingElementId != null) {
       commitInlineEditingIfActive()
     } else {
@@ -376,6 +375,16 @@ fun CanvasEditorScreen(
       onStrokeSizeChange = { strokeSizeRatio = it },
       onStylusOnlyChange = { stylusOnlyPalmRejection = it },
       onAddTextClick = { createAndFocusInlineTextAt(0.08f, 0.18f) },
+      onOpenStickerStudio = {
+        commitInlineEditingIfActive()
+        toolMode = EditorToolMode.STUDIO_ASSETS
+        isInspectorCollapsed = false
+      },
+      onStartDrawMode = {
+        commitInlineEditingIfActive()
+        toolMode = EditorToolMode.DRAW
+        isInspectorCollapsed = false
+      },
       onEditSelectedText = { el -> startInlineTextOnElement(el) },
       onPickPhotoClick = {
         photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -541,9 +550,15 @@ fun CanvasEditorScreen(
     )
   }
 
-  Dialog(
-    onDismissRequest = { closeEditorCleanly() },
-    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+  Box(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .clickable(
+          interactionSource = remember { MutableInteractionSource() },
+          indication = null,
+          onClick = {},
+        )
   ) {
     Surface(
       color = palette.background,
@@ -558,8 +573,7 @@ fun CanvasEditorScreen(
           modifier =
             Modifier
               .fillMaxSize()
-              .windowInsetsPadding(WindowInsets.safeDrawing)
-              .imePadding(),
+              .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
         // 1. Top Editor Bar (Close, Page/Save pill, Undo, Redo, Done)
         Surface(
@@ -701,8 +715,6 @@ fun CanvasEditorScreen(
         var workspacePxSize by remember { mutableStateOf(IntSize(1, 1)) }
         var isOrbExpanded by remember { mutableStateOf(false) }
 
-        var isInspectorCollapsed by remember { mutableStateOf(false) }
-
         Box(
           modifier =
             Modifier
@@ -712,7 +724,7 @@ fun CanvasEditorScreen(
         ) {
           BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val isWideWorkspace = maxWidth >= 720.dp
-            val phoneInspectorMaxHeight = (maxHeight * 0.34f).coerceIn(104.dp, 220.dp)
+            val phoneInspectorMaxHeight = (maxHeight * 0.30f).coerceIn(96.dp, 200.dp)
 
             val canvasStageContent: @Composable () -> Unit = {
               InteractiveCanvasStage(
@@ -829,21 +841,8 @@ fun CanvasEditorScreen(
                       Modifier
                         .fillMaxWidth()
                         .padding(horizontal = SankalanSpacing.sm, vertical = SankalanSpacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                   ) {
-                    AnimatedVisibility(visible = !isInspectorCollapsed) {
-                      Box(
-                        modifier =
-                          Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = phoneInspectorMaxHeight)
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = SankalanSpacing.xs, vertical = SankalanSpacing.xs)
-                            .padding(bottom = 8.dp),
-                      ) {
-                        inspectorBlock()
-                      }
-                    }
-
                     Row(
                       modifier = Modifier.fillMaxWidth(),
                       verticalAlignment = Alignment.CenterVertically,
@@ -877,6 +876,20 @@ fun CanvasEditorScreen(
                         )
                       }
                     }
+
+                    AnimatedVisibility(visible = !isInspectorCollapsed) {
+                      Box(
+                        modifier =
+                          Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = phoneInspectorMaxHeight)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = SankalanSpacing.xs, vertical = SankalanSpacing.xs)
+                            .padding(bottom = 6.dp),
+                      ) {
+                        inspectorBlock()
+                      }
+                    }
                   }
                 }
               }
@@ -904,6 +917,12 @@ fun CanvasEditorScreen(
               isOrbExpanded = false
               createAndFocusInlineTextAt(0.10f, 0.22f)
             },
+            onSelectStickerTool = {
+              commitInlineEditingIfActive()
+              toolMode = EditorToolMode.STUDIO_ASSETS
+              isInspectorCollapsed = false
+              isOrbExpanded = false
+            },
             onSelectMoveTool = {
               commitInlineEditingIfActive()
               toolMode = EditorToolMode.SELECT
@@ -916,6 +935,58 @@ fun CanvasEditorScreen(
         }
       }
       }
+    }
+
+    // Smart Sticker Cutout & Border Editor Overlay (rendered inside root Box over CanvasEditorScreen)
+    if (pendingStickerEditor != null) {
+      val (sourceBmp, existingUpload) = pendingStickerEditor!!
+      StickerCutoutEditorDialog(
+        sourceBitmap = sourceBmp,
+        initialTitle = existingUpload?.title ?: "My Sticker",
+        onDismiss = {
+          pendingStickerEditor = null
+        },
+        onSaveSticker = { finalStickerBmp, title ->
+          val saved =
+            studioStore.saveEditedSticker(
+              stickerBitmap = finalStickerBmp,
+              sourceBitmap = sourceBmp,
+              title = title,
+              existingAssetId = existingUpload?.id,
+            )
+          if (finalStickerBmp !== sourceBmp && !finalStickerBmp.isRecycled) {
+            finalStickerBmp.recycle()
+          }
+          pendingStickerEditor = null
+          if (saved != null) {
+            userUploads = studioStore.loadUploads()
+            if (existingUpload == null) {
+              val el =
+                CanvasElement(
+                  id = UUID.randomUUID().toString(),
+                  type = "sticker",
+                  x = 0.28f,
+                  y = 0.30f,
+                  w = 0.34f,
+                  h = 0.24f,
+                  zIndex = nextZIndex(workingPage),
+                  assetId = saved.id,
+                  blobRef = saved.filePath,
+                  text = saved.title,
+                )
+              selectedElementId = el.id
+              commitAndPersist(workingPage.copy(elements = workingPage.elements + el))
+            } else {
+              val updatedElements =
+                workingPage.elements.map { el ->
+                  if (el.assetId == saved.id) el.copy(blobRef = saved.filePath, text = saved.title)
+                  else el
+                }
+              commitAndPersist(workingPage.copy(elements = updatedElements))
+            }
+          }
+        },
+      )
     }
   }
 
@@ -953,58 +1024,6 @@ fun CanvasEditorScreen(
           }
         commitAndPersist(workingPage.copy(elements = updatedElements))
         pendingPhotoForCrop = null
-      },
-    )
-  }
-
-  // Smart Sticker Cutout & Border Editor Dialog
-  if (pendingStickerEditor != null) {
-    val (sourceBmp, existingUpload) = pendingStickerEditor!!
-    StickerCutoutEditorDialog(
-      sourceBitmap = sourceBmp,
-      initialTitle = existingUpload?.title ?: "My Sticker",
-      onDismiss = {
-        pendingStickerEditor = null
-      },
-      onSaveSticker = { finalStickerBmp, title ->
-        val saved =
-          studioStore.saveEditedSticker(
-            stickerBitmap = finalStickerBmp,
-            sourceBitmap = sourceBmp,
-            title = title,
-            existingAssetId = existingUpload?.id,
-          )
-        if (finalStickerBmp !== sourceBmp && !finalStickerBmp.isRecycled) {
-          finalStickerBmp.recycle()
-        }
-        pendingStickerEditor = null
-        if (saved != null) {
-          userUploads = studioStore.loadUploads()
-          if (existingUpload == null) {
-            val el =
-              CanvasElement(
-                id = UUID.randomUUID().toString(),
-                type = "sticker",
-                x = 0.28f,
-                y = 0.30f,
-                w = 0.34f,
-                h = 0.24f,
-                zIndex = nextZIndex(workingPage),
-                assetId = saved.id,
-                blobRef = saved.filePath,
-                text = saved.title,
-              )
-            selectedElementId = el.id
-            commitAndPersist(workingPage.copy(elements = workingPage.elements + el))
-          } else {
-            val updatedElements =
-              workingPage.elements.map { el ->
-                if (el.assetId == saved.id) el.copy(blobRef = saved.filePath, text = saved.title)
-                else el
-              }
-            commitAndPersist(workingPage.copy(elements = updatedElements))
-          }
-        }
       },
     )
   }
@@ -1311,6 +1330,7 @@ private fun FloatingQuickToolOrb(
   onToggleExpand: () -> Unit,
   onSelectPenTool: (PenKind) -> Unit,
   onSelectTextTool: () -> Unit,
+  onSelectStickerTool: () -> Unit,
   onSelectMoveTool: () -> Unit,
   onToggleStylusOnly: () -> Unit,
   onUndo: () -> Unit,
@@ -1424,6 +1444,13 @@ private fun FloatingQuickToolOrb(
               onClick = onSelectTextTool,
             )
             QuickOrbToolRow(
+              icon = Icons.Outlined.AutoAwesome,
+              label = strings.editorQuickOrbSticker,
+              selected = toolMode == EditorToolMode.STUDIO_ASSETS,
+              onClick = onSelectStickerTool,
+              modifier = Modifier.testTag("editor_orb_sticker_btn"),
+            )
+            QuickOrbToolRow(
               icon = Icons.Outlined.OpenWith,
               label = strings.editorQuickOrbSelect,
               selected = toolMode == EditorToolMode.SELECT,
@@ -1506,11 +1533,12 @@ private fun QuickOrbToolRow(
   label: String,
   selected: Boolean,
   onClick: () -> Unit,
+  modifier: Modifier = Modifier,
 ) {
   Surface(
     shape = RoundedCornerShape(10.dp),
     color = if (selected) SankalanTokens.AntiqueGold else SankalanTokens.Walnut800,
-    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick),
+    modifier = modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick),
   ) {
     Row(
       modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
@@ -1991,6 +2019,8 @@ private fun EditorInspectorContent(
   onStrokeSizeChange: (Float) -> Unit,
   onStylusOnlyChange: (Boolean) -> Unit,
   onAddTextClick: () -> Unit,
+  onOpenStickerStudio: () -> Unit,
+  onStartDrawMode: () -> Unit,
   onEditSelectedText: (CanvasElement) -> Unit,
   onPickPhotoClick: () -> Unit,
   onEditPhotoCrop: (CanvasElement) -> Unit,
@@ -2022,11 +2052,79 @@ private fun EditorInspectorContent(
   when (toolMode) {
     EditorToolMode.SELECT -> {
       if (selectedElement == null) {
-        Text(
-          text = strings.editorRotateHandleHint,
-          style = MaterialTheme.typography.bodySmall,
-          color = palette.textSecondary,
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Button(
+              onClick = onOpenStickerStudio,
+              colors = ButtonDefaults.buttonColors(containerColor = palette.goldAccent, contentColor = SankalanTokens.Walnut900),
+              shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+              modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_quick_add_sticker"),
+            ) {
+              Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(strings.editorQuickAddSticker, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+
+            OutlinedButton(
+              onClick = onPickUserUpload,
+              border = BorderStroke(1.dp, palette.borderGold),
+              shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+              modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_quick_sticker_from_photo"),
+            ) {
+              Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(strings.editorQuickStickerFromPhoto, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+
+            OutlinedButton(
+              onClick = onAddTextClick,
+              border = BorderStroke(1.dp, palette.borderSubtle),
+              shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+              modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_quick_add_text"),
+            ) {
+              Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(strings.editorAddTextBox, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+
+            OutlinedButton(
+              onClick = onPickPhotoClick,
+              border = BorderStroke(1.dp, palette.borderSubtle),
+              shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+              modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_quick_add_photo"),
+            ) {
+              Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(strings.editorToolPhoto, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+
+            OutlinedButton(
+              onClick = onStartDrawMode,
+              border = BorderStroke(1.dp, palette.borderSubtle),
+              shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+              modifier = Modifier.minimumInteractiveComponentSize(),
+            ) {
+              Icon(Icons.Outlined.Brush, contentDescription = null, modifier = Modifier.size(16.dp))
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(strings.editorToolDraw, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
+          }
+
+          Text(
+            text = strings.editorRotateHandleHint,
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.textSecondary,
+          )
+        }
       } else {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
           Text(

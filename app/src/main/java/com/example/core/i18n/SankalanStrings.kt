@@ -359,6 +359,9 @@ interface SankalanStrings {
   val editorQuickOrbHighlighter: String
   val editorQuickOrbEraser: String
   val editorQuickOrbText: String
+  val editorQuickOrbSticker: String
+  val editorQuickAddSticker: String
+  val editorQuickStickerFromPhoto: String
   val editorQuickOrbSelect: String
   val editorQuickOrbStylusToggle: String
   val editorFontSizeLabel: String
@@ -788,6 +791,9 @@ object StringsEn : SankalanStrings {
   override val editorQuickOrbHighlighter = "Highlighter"
   override val editorQuickOrbEraser = "Eraser"
   override val editorQuickOrbText = "Type Text"
+  override val editorQuickOrbSticker = "Add Sticker"
+  override val editorQuickAddSticker = "+ Sticker"
+  override val editorQuickStickerFromPhoto = "Sticker from Photo"
   override val editorQuickOrbSelect = "Move & Spin"
   override val editorQuickOrbStylusToggle = "Stylus Mode"
   override val editorFontSizeLabel = "Size"
@@ -1215,6 +1221,9 @@ object StringsBnBd : SankalanStrings {
   override val editorQuickOrbHighlighter = "হাইলাইটার"
   override val editorQuickOrbEraser = "মুছনী (ইরেজার)"
   override val editorQuickOrbText = "কাগজে টাইপ"
+  override val editorQuickOrbSticker = "স্টিকার যোগ"
+  override val editorQuickAddSticker = "+ স্টিকার"
+  override val editorQuickStickerFromPhoto = "ছবি থেকে স্টিকার"
   override val editorQuickOrbSelect = "সরান ও ঘোরান"
   override val editorQuickOrbStylusToggle = "স্টাইলাস পাম-লক"
   override val editorFontSizeLabel = "আকার"

@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -87,8 +89,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.core.i18n.LocalStrings
 import com.example.core.i18n.formatNumber
 import com.example.core.model.AppSettings
@@ -215,9 +215,15 @@ fun ReadingModeScreen(
     }
   }
 
-  Dialog(
-    onDismissRequest = onDismiss,
-    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+  Box(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .clickable(
+          interactionSource = remember { MutableInteractionSource() },
+          indication = null,
+          onClick = {},
+        )
   ) {
     Surface(
       color = palette.background,
@@ -891,7 +897,8 @@ fun ReadingModeScreen(
                 Modifier
                   .fillMaxWidth()
                   .widthIn(max = 980.dp)
-                  .padding(horizontal = SankalanSpacing.md, vertical = SankalanSpacing.xs),
+                  .padding(horizontal = SankalanSpacing.md)
+                  .padding(top = SankalanSpacing.xs, bottom = SankalanSpacing.sm),
               verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
               Text(

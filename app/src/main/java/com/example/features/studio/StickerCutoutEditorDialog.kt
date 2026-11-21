@@ -1,6 +1,7 @@
 package com.example.features.studio
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -8,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,8 +91,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.core.i18n.LocalStrings
 import com.example.ui.theme.LocalSankalanPalette
 import com.example.ui.theme.SankalanSpacing
@@ -235,9 +235,19 @@ fun StickerCutoutEditorDialog(
     }
   }
 
-  Dialog(
-    onDismissRequest = { if (!isSaving) onDismiss() },
-    properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+  BackHandler(enabled = true) {
+    if (!isSaving) onDismiss()
+  }
+
+  Box(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .clickable(
+          interactionSource = remember { MutableInteractionSource() },
+          indication = null,
+          onClick = {},
+        )
   ) {
     Surface(
       color = palette.background,

@@ -100,6 +100,7 @@ fun StudioScreen(
   numeralStyle: NumeralStyle,
   activeDiaries: List<DiaryWithPages>,
   onApplyToDiaryPage: (diaryId: String, updatedPage: Page) -> Unit,
+  onOpenStickerCutoutEditor: ((source: Bitmap, existing: UserUploadedAsset?, onCompleted: () -> Unit) -> Unit)? = null,
   modifier: Modifier = Modifier,
 ) {
   val strings = LocalStrings.current
@@ -117,12 +118,23 @@ fun StudioScreen(
   var pendingSafeTemplateTarget by remember { mutableStateOf<Triple<String, Page, PageTemplate>?>(null) }
   var pendingStickerEditor by remember { mutableStateOf<Pair<Bitmap, UserUploadedAsset?>?>(null) }
 
+  fun launchStickerEditor(sourceBmp: Bitmap, existing: UserUploadedAsset?) {
+    if (onOpenStickerCutoutEditor != null) {
+      onOpenStickerCutoutEditor(sourceBmp, existing) {
+        userUploads = store.loadUploads()
+        selectedCategory = StudioCategory.MY_UPLOADS
+      }
+    } else {
+      pendingStickerEditor = sourceBmp to existing
+    }
+  }
+
   val pickAssetLauncher =
     rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
       if (uri != null) {
         val decoded = StickerCutoutEngine.decodeUriWithExifCorrection(context, uri, maxDim = 960)
         if (decoded != null) {
-          pendingStickerEditor = decoded to null
+          launchStickerEditor(decoded, null)
         }
       }
     }
@@ -532,7 +544,7 @@ fun StudioScreen(
                         IconButton(
                           onClick = {
                             val src = store.loadSourceBitmapForUpload(upload)
-                            if (src != null) pendingStickerEditor = src to upload
+                            if (src != null) launchStickerEditor(src, upload)
                           },
                           modifier = Modifier.size(28.dp).testTag("studio_edit_upload_${upload.id}"),
                         ) {

@@ -1,6 +1,7 @@
 package com.example.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -106,7 +107,10 @@ import com.example.features.security.AppLockGateOverlay
 import com.example.features.security.AppLockManager
 import com.example.features.settings.SettingsScreen
 import com.example.features.shell.HomeScreen
+import com.example.features.studio.StickerCutoutEditorDialog
 import com.example.features.studio.StudioScreen
+import com.example.features.studio.StudioUserStore
+import com.example.features.studio.UserUploadedAsset
 import com.example.features.update.AppUpdateChecker
 import com.example.features.update.AppUpdateNotifier
 import com.example.features.update.AppUpdateScheduler
@@ -295,6 +299,7 @@ private fun AuthenticatedSankalanShell(
   var renameTarget by remember { mutableStateOf<DiaryWithPages?>(null) }
   var deleteTarget by remember { mutableStateOf<DiaryWithPages?>(null) }
   var exportTarget by remember { mutableStateOf<Pair<DiaryWithPages, Page?>?>(null) }
+  var pendingStudioStickerTarget by remember { mutableStateOf<Triple<Bitmap, UserUploadedAsset?, () -> Unit>?>(null) }
   var isSessionUnlocked by rememberSaveable { mutableStateOf(false) }
   var previousLockState by remember { mutableStateOf<Boolean?>(null) }
   var pendingStartupUpdate by remember { mutableStateOf<UpdateReleaseManifest?>(null) }
@@ -605,6 +610,9 @@ private fun AuthenticatedSankalanShell(
                       viewModel.savePageChanges(diaryId, updatedPage)
                       editingTarget = diaryId to updatedPage.id
                     },
+                    onOpenStickerCutoutEditor = { src, existing, onDone ->
+                      pendingStudioStickerTarget = Triple(src, existing, onDone)
+                    },
                   )
                 }
                 composable(SankalanRoutes.ARCHIVE) {
@@ -851,6 +859,29 @@ private fun AuthenticatedSankalanShell(
             activePage = targetPage,
             numeralStyle = settings.numeralStyle,
             onDismiss = { exportTarget = null },
+          )
+        }
+
+        if (pendingStudioStickerTarget != null) {
+          val (sourceBmp, existingUpload, onCompleted) = pendingStudioStickerTarget!!
+          StickerCutoutEditorDialog(
+            sourceBitmap = sourceBmp,
+            initialTitle = existingUpload?.title ?: "My Sticker",
+            onDismiss = { pendingStudioStickerTarget = null },
+            onSaveSticker = { finalStickerBmp, title ->
+              val studioStore = StudioUserStore(context)
+              studioStore.saveEditedSticker(
+                stickerBitmap = finalStickerBmp,
+                sourceBitmap = sourceBmp,
+                title = title,
+                existingAssetId = existingUpload?.id,
+              )
+              if (finalStickerBmp !== sourceBmp && !finalStickerBmp.isRecycled) {
+                finalStickerBmp.recycle()
+              }
+              pendingStudioStickerTarget = null
+              onCompleted()
+            },
           )
         }
 

@@ -286,6 +286,46 @@ fun StudioAssetPackPanel(
   var activeFilter by remember { mutableStateOf(StudioCategory.WASHI_TAPE) }
 
   Column(verticalArrangement = Arrangement.spacedBy(SankalanSpacing.sm)) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Button(
+        onClick = onPickUserUpload,
+        colors =
+          ButtonDefaults.buttonColors(
+            containerColor = palette.goldAccent,
+            contentColor = SankalanTokens.Walnut900,
+          ),
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.minimumInteractiveComponentSize().testTag("studio_direct_sticker_from_photo_btn"),
+      ) {
+        Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+          text = strings.editorQuickStickerFromPhoto,
+          style = MaterialTheme.typography.labelLarge,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      if (userUploads.isNotEmpty() && activeFilter != StudioCategory.MY_UPLOADS) {
+        OutlinedButton(
+          onClick = { activeFilter = StudioCategory.MY_UPLOADS },
+          border = BorderStroke(1.dp, palette.borderGold),
+          shape = MaterialTheme.shapes.small,
+          modifier = Modifier.minimumInteractiveComponentSize(),
+        ) {
+          Text(
+            text = "${strings.studioCatUploads} (${userUploads.size})",
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+          )
+        }
+      }
+    }
+
     FlowRow(
       horizontalArrangement = Arrangement.spacedBy(6.dp),
       verticalArrangement = Arrangement.spacedBy(6.dp),
