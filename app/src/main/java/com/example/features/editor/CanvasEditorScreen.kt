@@ -108,6 +108,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -217,10 +218,8 @@ fun CanvasEditorScreen(
   var stylusOnlyPalmRejection by remember { mutableStateOf(false) }
   var activeStroke by remember { mutableStateOf<StrokePayload?>(null) }
 
-  // Snap guides & rotation feedback state during drag/rotate
-  var vGuides by remember { mutableStateOf<List<Float>>(emptyList()) }
-  var hGuides by remember { mutableStateOf<List<Float>>(emptyList()) }
-  var isRotatingActive by remember { mutableStateOf(false) }
+  // GPU-only live gesture transform & canvas size
+  var liveTransform by remember { mutableStateOf<LiveElementTransform?>(null) }
   var canvasPxSize by remember { mutableStateOf(IntSize(1, 1)) }
 
   // Dialog states
@@ -255,28 +254,69 @@ fun CanvasEditorScreen(
     if (inlineEditingElementId != null && inlineEditingElementId != el.id) {
       commitInlineEditingIfActive()
     }
-    selectedElementId = el.id
+    selectedElementId = if (isPageBodyElement(el)) null else el.id
     inlineEditingElementId = el.id
   }
 
-  fun createAndFocusInlineTextAt(tapX: Float, tapY: Float) {
+  fun focusOrCreatePageBodyInline() {
+    val existingBody = workingPage.elements.firstOrNull { isPageBodyElement(it) && !it.locked }
+    if (existingBody != null) {
+      if (inlineEditingElementId != null && inlineEditingElementId != existingBody.id) {
+        commitInlineEditingIfActive()
+      }
+      selectedElementId = null
+      inlineEditingElementId = existingBody.id
+      toolMode = EditorToolMode.TEXT
+      return
+    }
     commitInlineEditingIfActive()
-    val x = tapX.coerceIn(0.06f, 0.62f)
-    val y = tapY.coerceIn(0.08f, 0.78f)
-    val w = (0.94f - x).coerceIn(0.32f, 0.84f)
+    val hasHeader =
+      !workingPage.dateIso.isNullOrBlank() ||
+        !workingPage.mood.isNullOrBlank() ||
+        !workingPage.title.isNullOrBlank() ||
+        workingPage.pinned
+    val startY = if (hasHeader) 0.165f else 0.06f
     val newEl =
       CanvasElement(
         id = UUID.randomUUID().toString(),
         type = "text",
-        x = x,
-        y = y,
-        w = w,
-        h = 0.20f,
+        assetId = PAGE_BODY_ASSET_ID,
+        x = 0.065f,
+        y = startY,
+        w = 0.87f,
+        h = (0.94f - startY).coerceAtLeast(0.55f),
         text = "",
         fontId = defaultTextFontId,
         fontSize = defaultTextSize,
         colorHex = defaultTextColorHex,
         align = defaultTextAlign,
+        bold = defaultTextBold,
+        italic = defaultTextItalic,
+        underline = defaultTextUnderline,
+        zIndex = 0,
+      )
+    workingPage = workingPage.copy(elements = workingPage.elements + newEl)
+    selectedElementId = null
+    inlineEditingElementId = newEl.id
+    toolMode = EditorToolMode.TEXT
+  }
+
+  fun createDiagramTextBox() {
+    commitInlineEditingIfActive()
+    val newEl =
+      CanvasElement(
+        id = UUID.randomUUID().toString(),
+        type = "text",
+        assetId = DIAGRAM_BOX_ASSET_ID,
+        x = 0.22f,
+        y = 0.36f,
+        w = 0.48f,
+        h = 0.16f,
+        text = "",
+        fontId = defaultTextFontId,
+        fontSize = defaultTextSize,
+        colorHex = defaultTextColorHex,
+        align = "center",
         bold = defaultTextBold,
         italic = defaultTextItalic,
         underline = defaultTextUnderline,
@@ -374,7 +414,8 @@ fun CanvasEditorScreen(
       onColorChange = { penColorHex = it },
       onStrokeSizeChange = { strokeSizeRatio = it },
       onStylusOnlyChange = { stylusOnlyPalmRejection = it },
-      onAddTextClick = { createAndFocusInlineTextAt(0.08f, 0.18f) },
+      onWriteOnPageClick = { focusOrCreatePageBodyInline() },
+      onAddDiagramBoxClick = { createDiagramTextBox() },
       onOpenStickerStudio = {
         commitInlineEditingIfActive()
         toolMode = EditorToolMode.STUDIO_ASSETS
@@ -734,14 +775,12 @@ fun CanvasEditorScreen(
                 selectedElementId = selectedElementId,
                 inlineEditingElementId = inlineEditingElementId,
                 inlinePlaceholder = strings.editorInlineTextHint,
-                showRotationAngleBadge = isRotatingActive,
                 activePen = activePen,
                 penColorHex = penColorHex,
                 strokeSizeRatio = strokeSizeRatio,
                 stylusOnlyPalmRejection = stylusOnlyPalmRejection,
                 activeStroke = activeStroke,
-                vGuides = vGuides,
-                hGuides = hGuides,
+                liveTransform = liveTransform,
                 canvasPxSize = canvasPxSize,
                 playingVoiceElementId = playingVoiceElementId,
                 onVoiceElementClick = { el ->
@@ -757,7 +796,7 @@ fun CanvasEditorScreen(
                   selectedElementId = id
                 },
                 onStartInlineEdit = { el -> startInlineTextOnElement(el) },
-                onCreateInlineTextAt = { nx, ny -> createAndFocusInlineTextAt(nx, ny) },
+                onFocusPageBody = { focusOrCreatePageBodyInline() },
                 onInlineTextChange = { elId, nextText ->
                   workingPage =
                     workingPage.copy(
@@ -766,16 +805,12 @@ fun CanvasEditorScreen(
                     )
                 },
                 onCommitInlineText = { commitInlineEditingIfActive() },
-                onUpdateWorkingElementsLive = { newElements, vg, hg, rotating ->
-                  workingPage = workingPage.copy(elements = newElements)
-                  vGuides = vg
-                  hGuides = hg
-                  isRotatingActive = rotating
+                onLiveTransformChange = { nextLt -> liveTransform = nextLt },
+                onErasePreviewElements = { remaining ->
+                  workingPage = workingPage.copy(elements = remaining)
                 },
                 onCommitElements = { finalElements ->
-                  vGuides = emptyList()
-                  hGuides = emptyList()
-                  isRotatingActive = false
+                  liveTransform = null
                   commitAndPersist(workingPage.copy(elements = finalElements))
                 },
                 onActiveStrokeChange = { activeStroke = it },
@@ -913,9 +948,8 @@ fun CanvasEditorScreen(
               isOrbExpanded = false
             },
             onSelectTextTool = {
-              toolMode = EditorToolMode.TEXT
               isOrbExpanded = false
-              createAndFocusInlineTextAt(0.10f, 0.22f)
+              focusOrCreatePageBodyInline()
             },
             onSelectStickerTool = {
               commitInlineEditingIfActive()
@@ -1569,37 +1603,50 @@ private fun InteractiveCanvasStage(
   selectedElementId: String?,
   inlineEditingElementId: String?,
   inlinePlaceholder: String,
-  showRotationAngleBadge: Boolean,
   activePen: PenKind,
   penColorHex: String,
   strokeSizeRatio: Float,
   stylusOnlyPalmRejection: Boolean,
   activeStroke: StrokePayload?,
-  vGuides: List<Float>,
-  hGuides: List<Float>,
+  liveTransform: LiveElementTransform?,
   canvasPxSize: IntSize,
   playingVoiceElementId: String?,
   onVoiceElementClick: (CanvasElement) -> Unit,
   onCanvasSizeChanged: (IntSize) -> Unit,
   onSelectElement: (String?) -> Unit,
   onStartInlineEdit: (CanvasElement) -> Unit,
-  onCreateInlineTextAt: (Float, Float) -> Unit,
+  onFocusPageBody: () -> Unit,
   onInlineTextChange: (String, String) -> Unit,
   onCommitInlineText: () -> Unit,
-  onUpdateWorkingElementsLive: (List<CanvasElement>, List<Float>, List<Float>, Boolean) -> Unit,
+  onLiveTransformChange: (LiveElementTransform?) -> Unit,
+  onErasePreviewElements: (List<CanvasElement>) -> Unit,
   onCommitElements: (List<CanvasElement>) -> Unit,
   onActiveStrokeChange: (StrokePayload?) -> Unit,
   onCommitStroke: (CanvasElement) -> Unit,
 ) {
-  var dragStartElements by remember { mutableStateOf<List<CanvasElement>?>(null) }
-  var dragTargetId by remember { mutableStateOf<String?>(null) }
-  var activeHitZone by remember { mutableStateOf<ElementHitZone?>(null) }
+  val currentPage by rememberUpdatedState(workingPage)
+  val currentSelectedId by rememberUpdatedState(selectedElementId)
+  val currentToolMode by rememberUpdatedState(toolMode)
+  val currentActivePen by rememberUpdatedState(activePen)
+  val currentPenColor by rememberUpdatedState(penColorHex)
+  val currentStrokeSize by rememberUpdatedState(strokeSizeRatio)
+  val currentStylusOnly by rememberUpdatedState(stylusOnlyPalmRejection)
+  val currentLiveTransform by rememberUpdatedState(liveTransform)
+
+  val onSelectLatest by rememberUpdatedState(onSelectElement)
+  val onStartInlineLatest by rememberUpdatedState(onStartInlineEdit)
+  val onFocusPageBodyLatest by rememberUpdatedState(onFocusPageBody)
+  val onLiveTransformLatest by rememberUpdatedState(onLiveTransformChange)
+  val onErasePreviewLatest by rememberUpdatedState(onErasePreviewElements)
+  val onCommitElementsLatest by rememberUpdatedState(onCommitElements)
+  val onActiveStrokeLatest by rememberUpdatedState(onActiveStrokeChange)
+  val onCommitStrokeLatest by rememberUpdatedState(onCommitStroke)
 
   Box(
     modifier =
       Modifier
         .onSizeChanged(onCanvasSizeChanged)
-        .pointerInput(toolMode, inlineEditingElementId, workingPage.elements, selectedElementId, canvasPxSize) {
+        .pointerInput(toolMode, inlineEditingElementId, canvasPxSize) {
           if (toolMode != EditorToolMode.DRAW && inlineEditingElementId == null) {
             detectTapGestures(
               onTap = { tapOffset ->
@@ -1608,9 +1655,11 @@ private fun InteractiveCanvasStage(
                 val aspect = cw / ch
                 val nx = tapOffset.x / cw
                 val ny = tapOffset.y / ch
+                val elements = currentPage.elements
+                val selId = currentSelectedId
                 val hit =
-                  workingPage.elements
-                    .filter { !it.hidden && !it.locked && it.type != "stroke" }
+                  elements
+                    .filter { !it.hidden && !it.locked && it.type != "stroke" && !isPageBodyElement(it) }
                     .sortedByDescending { it.zIndex }
                     .firstOrNull {
                       CanvasTransformMath.hitTestElement(
@@ -1618,19 +1667,19 @@ private fun InteractiveCanvasStage(
                         ny = ny,
                         el = it,
                         canvasAspect = aspect,
-                        isSelected = it.id == selectedElementId,
+                        isSelected = it.id == selId,
                       ) != null
                     }
-                if (toolMode == EditorToolMode.TEXT) {
+                if (currentToolMode == EditorToolMode.TEXT) {
                   if (hit != null && hit.type == "text") {
-                    onStartInlineEdit(hit)
+                    onStartInlineLatest(hit)
                   } else if (hit == null) {
-                    onCreateInlineTextAt(nx, ny)
+                    onFocusPageBodyLatest()
                   } else {
-                    onSelectElement(hit.id)
+                    onSelectLatest(hit.id)
                   }
                 } else {
-                  onSelectElement(hit?.id)
+                  onSelectLatest(hit?.id)
                 }
               },
               onDoubleTap = { tapOffset ->
@@ -1639,19 +1688,33 @@ private fun InteractiveCanvasStage(
                 val aspect = cw / ch
                 val nx = tapOffset.x / cw
                 val ny = tapOffset.y / ch
-                val hit =
-                  workingPage.elements
-                    .filter { !it.hidden && !it.locked && it.type == "text" }
+                val elements = currentPage.elements
+                val selId = currentSelectedId
+                val hitBox =
+                  elements
+                    .filter { !it.hidden && !it.locked && isDiagramTextBox(it) }
                     .sortedByDescending { it.zIndex }
                     .firstOrNull {
-                      CanvasTransformMath.hitTestElement(nx, ny, it, aspect, it.id == selectedElementId) != null
+                      CanvasTransformMath.hitTestElement(nx, ny, it, aspect, it.id == selId) != null
                     }
-                if (hit != null) onStartInlineEdit(hit)
+                if (hitBox != null) {
+                  onStartInlineLatest(hitBox)
+                } else {
+                  val nonTextHit =
+                    elements
+                      .filter { !it.hidden && !it.locked && it.type != "stroke" && !isPageBodyElement(it) }
+                      .any {
+                        CanvasTransformMath.hitTestElement(nx, ny, it, aspect, it.id == selId) != null
+                      }
+                  if (!nonTextHit) {
+                    onFocusPageBodyLatest()
+                  }
+                }
               },
             )
           }
         }
-        .pointerInput(toolMode, inlineEditingElementId, workingPage.elements, selectedElementId, canvasPxSize) {
+        .pointerInput(toolMode, inlineEditingElementId, canvasPxSize) {
           if (toolMode != EditorToolMode.DRAW && inlineEditingElementId == null) {
             awaitEachGesture {
               val down = awaitFirstDown(requireUnconsumed = false)
@@ -1660,9 +1723,13 @@ private fun InteractiveCanvasStage(
               val aspect = cw / ch
               val startNx = down.position.x / cw
               val startNy = down.position.y / ch
+              val startElements = currentPage.elements
+              val selId = currentSelectedId
 
               val currentSel =
-                workingPage.elements.firstOrNull { it.id == selectedElementId && !it.locked && !it.hidden }
+                startElements.firstOrNull {
+                  it.id == selId && !it.locked && !it.hidden && !isPageBodyElement(it)
+                }
               var initialZone: ElementHitZone? =
                 if (currentSel != null) {
                   CanvasTransformMath.hitTestElement(startNx, startNy, currentSel, aspect, isSelected = true)
@@ -1674,8 +1741,8 @@ private fun InteractiveCanvasStage(
                   currentSel
                 } else {
                   val found =
-                    workingPage.elements
-                      .filter { !it.hidden && !it.locked && it.type != "stroke" }
+                    startElements
+                      .filter { !it.hidden && !it.locked && it.type != "stroke" && !isPageBodyElement(it) }
                       .sortedByDescending { it.zIndex }
                       .firstOrNull { el ->
                         CanvasTransformMath.hitTestElement(startNx, startNy, el, aspect, isSelected = false) != null
@@ -1684,16 +1751,27 @@ private fun InteractiveCanvasStage(
                   found
                 }
 
-              if (target == null && currentSel == null) {
-                return@awaitEachGesture
-              }
-
               val activeTarget = target ?: currentSel ?: return@awaitEachGesture
-              dragTargetId = activeTarget.id
-              activeHitZone = initialZone ?: ElementHitZone.BODY
-              dragStartElements = workingPage.elements
+              val hitZone = initialZone ?: ElementHitZone.BODY
+              val movedIds =
+                if (activeTarget.groupId != null) {
+                  startElements.filter { it.groupId == activeTarget.groupId && !it.locked }.map { it.id }.toSet()
+                } else {
+                  setOf(activeTarget.id)
+                }
+              val siblings = startElements.filter { it.id !in movedIds }
+
               var didModify = false
               var totalDragDist = 0f
+              var dragDx = 0f
+              var dragDy = 0f
+              var resizeAccumPxX = 0f
+              var resizeAccumPxY = 0f
+              var pinchZoom = 1f
+              var pinchRot = 0f
+              var pinchPanX = 0f
+              var pinchPanY = 0f
+              var latestTransform: LiveElementTransform? = null
 
               while (true) {
                 val event = awaitPointerEvent()
@@ -1701,44 +1779,53 @@ private fun InteractiveCanvasStage(
                 if (pressedChanges.isEmpty()) break
 
                 if (pressedChanges.size >= 2) {
-                  // 2-finger multi-touch pinch-resize + rotate + pan on selected element
+                  // 2-finger multi-touch pinch-resize + rotate + pan on selected element via GPU graphicsLayer
                   val zoom = event.calculateZoom()
                   val rotDelta = event.calculateRotation()
                   val pan = event.calculatePan()
                   val distMoved = kotlin.math.abs(zoom - 1f) + kotlin.math.abs(rotDelta) + hypot(pan.x, pan.y)
                   if (distMoved > 0.002f) {
                     event.changes.forEach { it.consume() }
+                    if (!didModify) {
+                      onSelectLatest(activeTarget.id)
+                    }
                     didModify = true
-                    onSelectElement(activeTarget.id)
-                    val curList = workingPage.elements
-                    val el = curList.firstOrNull { it.id == activeTarget.id } ?: break
-                    val updatedEl =
-                      CanvasTransformMath.applyPinchRotateAndPan(
-                        el = el,
-                        zoomFactor = zoom,
-                        rotateDeltaDeg = rotDelta,
-                        panDxNorm = pan.x / cw,
-                        panDyNorm = pan.y / ch,
+                    pinchZoom = (pinchZoom * zoom).coerceIn(0.25f, 3.5f)
+                    pinchRot += rotDelta
+                    pinchPanX += pan.x / cw
+                    pinchPanY += pan.y / ch
+                    val clampedW = (activeTarget.w * pinchZoom).coerceIn(0.08f, 0.98f)
+                    val clampedH = (activeTarget.h * pinchZoom).coerceIn(0.04f, 0.94f)
+                    val lt =
+                      LiveElementTransform(
+                        targetIds = setOf(activeTarget.id),
+                        anchorElementId = activeTarget.id,
+                        dxNorm = pinchPanX,
+                        dyNorm = pinchPanY,
+                        scaleX = clampedW / activeTarget.w.coerceAtLeast(0.02f),
+                        scaleY = clampedH / activeTarget.h.coerceAtLeast(0.02f),
+                        rotationDeltaDeg = pinchRot,
+                        showRotationBadge = kotlin.math.abs(rotDelta) > 0.05f || kotlin.math.abs(pinchRot) > 0.5f,
                       )
-                    val updatedList = curList.map { if (it.id == el.id) updatedEl else it }
-                    onUpdateWorkingElementsLive(updatedList, emptyList(), emptyList(), kotlin.math.abs(rotDelta) > 0.1f)
+                    latestTransform = lt
+                    onLiveTransformLatest(lt)
                   }
                 } else if (target != null) {
-                  // 1-finger drag / rotate-handle / resize-handle
+                  // 1-finger drag / rotate-handle / resize-handle via GPU graphicsLayer (zero page recomposition)
                   val change = pressedChanges.first()
                   val delta = change.position - change.previousPosition
                   totalDragDist += hypot(delta.x, delta.y)
                   if (totalDragDist > viewConfiguration.touchSlop * 0.4f || didModify) {
                     change.consume()
+                    if (!didModify) {
+                      onSelectLatest(activeTarget.id)
+                    }
                     didModify = true
-                    onSelectElement(activeTarget.id)
-                    val curList = workingPage.elements
-                    val el = curList.firstOrNull { it.id == activeTarget.id } ?: break
 
-                    when (activeHitZone) {
+                    when (hitZone) {
                       ElementHitZone.ROTATE_HANDLE -> {
-                        val centerPxX = (el.x + el.w * 0.5f) * cw
-                        val centerPxY = (el.y + el.h * 0.5f) * ch
+                        val centerPxX = (activeTarget.x + activeTarget.w * 0.5f) * cw
+                        val centerPxY = (activeTarget.y + activeTarget.h * 0.5f) * ch
                         val nextAngle =
                           CanvasTransformMath.computeRotationDegreesFromTop(
                             pointerX = change.position.x,
@@ -1746,68 +1833,96 @@ private fun InteractiveCanvasStage(
                             centerX = centerPxX,
                             centerY = centerPxY,
                           )
-                        val updatedList =
-                          curList.map { if (it.id == el.id) it.copy(rotation = nextAngle) else it }
-                        onUpdateWorkingElementsLive(updatedList, emptyList(), emptyList(), true)
+                        val lt =
+                          LiveElementTransform(
+                            targetIds = setOf(activeTarget.id),
+                            anchorElementId = activeTarget.id,
+                            rotationOverrideDeg = nextAngle,
+                            showRotationBadge = true,
+                          )
+                        latestTransform = lt
+                        onLiveTransformLatest(lt)
                       }
                       ElementHitZone.RESIZE_HANDLE -> {
-                        val dxNorm = delta.x / cw
-                        val dyNorm = delta.y / ch
-                        val rad = Math.toRadians(-el.rotation.toDouble())
-                        val localDx = (dxNorm * cos(rad) - dyNorm * sin(rad)).toFloat()
-                        val localDy = (dxNorm * sin(rad) + dyNorm * cos(rad)).toFloat()
-                        val newW = (el.w + localDx).coerceIn(0.08f, 0.98f)
-                        val newH = (el.h + localDy).coerceIn(0.04f, 0.94f)
-                        val updatedList =
-                          curList.map { if (it.id == el.id) it.copy(w = newW, h = newH) else it }
-                        onUpdateWorkingElementsLive(updatedList, emptyList(), emptyList(), false)
+                        resizeAccumPxX += delta.x
+                        resizeAccumPxY += delta.y
+                        val rad = Math.toRadians(-activeTarget.rotation.toDouble())
+                        val cosR = cos(rad).toFloat()
+                        val sinR = sin(rad).toFloat()
+                        val localDx = (resizeAccumPxX * cosR - resizeAccumPxY * sinR) / cw
+                        val localDy = (resizeAccumPxX * sinR + resizeAccumPxY * cosR) / ch
+                        val newW = (activeTarget.w + localDx).coerceIn(0.08f, 0.98f)
+                        val newH = (activeTarget.h + localDy).coerceIn(0.04f, 0.94f)
+                        val dwPx = (newW - activeTarget.w) * cw * 0.5f
+                        val dhPx = (newH - activeTarget.h) * ch * 0.5f
+                        val posRad = Math.toRadians(activeTarget.rotation.toDouble())
+                        val shiftDx = (dwPx * cos(posRad) - dhPx * sin(posRad)).toFloat() / cw
+                        val shiftDy = (dwPx * sin(posRad) + dhPx * cos(posRad)).toFloat() / ch
+                        val lt =
+                          LiveElementTransform(
+                            targetIds = setOf(activeTarget.id),
+                            anchorElementId = activeTarget.id,
+                            dxNorm = shiftDx,
+                            dyNorm = shiftDy,
+                            scaleX = newW / activeTarget.w.coerceAtLeast(0.02f),
+                            scaleY = newH / activeTarget.h.coerceAtLeast(0.02f),
+                          )
+                        latestTransform = lt
+                        onLiveTransformLatest(lt)
                       }
-                      else -> {
-                        val dx = delta.x / cw
-                        val dy = delta.y / ch
-                        val siblings =
-                          curList.filter { it.id != el.id && (el.groupId == null || it.groupId != el.groupId) }
-                        val snap = CanvasSnapEngine.snapPosition(el.x + dx, el.y + dy, el.w, el.h, siblings)
-                        val appliedDx = snap.snappedX - el.x
-                        val appliedDy = snap.snappedY - el.y
-                        val updatedList =
-                          curList.map { item ->
-                            if (item.id == el.id || (el.groupId != null && item.groupId == el.groupId && !item.locked)) {
-                              item.copy(x = item.x + appliedDx, y = item.y + appliedDy)
-                            } else {
-                              item
-                            }
-                          }
-                        onUpdateWorkingElementsLive(updatedList, snap.verticalGuides, snap.horizontalGuides, false)
+                      ElementHitZone.BODY -> {
+                        dragDx += delta.x / cw
+                        dragDy += delta.y / ch
+                        val snap =
+                          CanvasSnapEngine.snapPosition(
+                            candidateX = activeTarget.x + dragDx,
+                            candidateY = activeTarget.y + dragDy,
+                            elementW = activeTarget.w,
+                            elementH = activeTarget.h,
+                            otherElements = siblings,
+                          )
+                        val appliedDx = snap.snappedX - activeTarget.x
+                        val appliedDy = snap.snappedY - activeTarget.y
+                        val lt =
+                          LiveElementTransform(
+                            targetIds = movedIds,
+                            anchorElementId = activeTarget.id,
+                            dxNorm = appliedDx,
+                            dyNorm = appliedDy,
+                            verticalGuides = snap.verticalGuides,
+                            horizontalGuides = snap.horizontalGuides,
+                          )
+                        latestTransform = lt
+                        onLiveTransformLatest(lt)
                       }
                     }
                   }
                 }
               }
 
-              if (didModify) {
-                onCommitElements(workingPage.elements)
+              val finalTransform = latestTransform
+              onLiveTransformLatest(null)
+              if (didModify && finalTransform != null) {
+                val committed = CanvasTransformMath.commitLiveTransform(startElements, finalTransform)
+                onCommitElementsLatest(committed)
               }
-              dragTargetId = null
-              dragStartElements = null
-              activeHitZone = null
             }
           }
         }
-        .pointerInput(toolMode, activePen, penColorHex, strokeSizeRatio, stylusOnlyPalmRejection, canvasPxSize, workingPage.elements) {
+        .pointerInput(toolMode, canvasPxSize) {
           if (toolMode == EditorToolMode.DRAW) {
             awaitEachGesture {
               val down = awaitFirstDown(requireUnconsumed = false)
               // Palm Rejection check: when stylusOnlyPalmRejection is true, only accept Stylus or Eraser pointers!
-              if (stylusOnlyPalmRejection && down.type != PointerType.Stylus && down.type != PointerType.Eraser) {
+              if (currentStylusOnly && down.type != PointerType.Stylus && down.type != PointerType.Eraser) {
                 return@awaitEachGesture
               }
               down.consume()
               val w = canvasPxSize.width.coerceAtLeast(1).toFloat()
               val h = canvasPxSize.height.coerceAtLeast(1).toFloat()
 
-              if (activePen == PenKind.ERASER || down.type == PointerType.Eraser) {
-                var currentElements = workingPage.elements
+              if (currentActivePen == PenKind.ERASER || down.type == PointerType.Eraser) {
+                var currentElements = currentPage.elements
                 var erasedAny = false
                 fun eraseNear(px: Float, py: Float) {
                   val nx = (px / w).coerceIn(0f, 1f)
@@ -1825,7 +1940,7 @@ private fun InteractiveCanvasStage(
                     }
                   if (filtered.size != currentElements.size) {
                     currentElements = filtered
-                    onUpdateWorkingElementsLive(filtered, emptyList(), emptyList(), false)
+                    onErasePreviewLatest(filtered)
                   }
                 }
                 eraseNear(down.position.x, down.position.y)
@@ -1837,7 +1952,7 @@ private fun InteractiveCanvasStage(
                   eraseNear(change.position.x, change.position.y)
                 }
                 if (erasedAny) {
-                  onCommitElements(currentElements)
+                  onCommitElementsLatest(currentElements)
                 }
               } else {
                 val points =
@@ -1850,13 +1965,13 @@ private fun InteractiveCanvasStage(
                   )
                 var currentPayload =
                   StrokePayload(
-                    tool = activePen.id,
-                    colorHex = penColorHex,
-                    widthRatio = strokeSizeRatio,
-                    opacity = if (activePen == PenKind.HIGHLIGHTER) 0.35f else 1f,
+                    tool = currentActivePen.id,
+                    colorHex = currentPenColor,
+                    widthRatio = currentStrokeSize,
+                    opacity = if (currentActivePen == PenKind.HIGHLIGHTER) 0.35f else 1f,
                     points = points.toList(),
                   )
-                onActiveStrokeChange(currentPayload)
+                onActiveStrokeLatest(currentPayload)
 
                 while (true) {
                   val event = awaitPointerEvent()
@@ -1869,7 +1984,7 @@ private fun InteractiveCanvasStage(
                   if (hypot(nx - last.x, ny - last.y) > 0.004f) {
                     points.add(StrokePoint(nx, ny, change.pressure.coerceIn(0.2f, 1.3f)))
                     currentPayload = currentPayload.copy(points = points.toList())
-                    onActiveStrokeChange(currentPayload)
+                    onActiveStrokeLatest(currentPayload)
                   }
                 }
 
@@ -1882,9 +1997,9 @@ private fun InteractiveCanvasStage(
                     w = 1f,
                     h = 1f,
                     strokePointsJson = CanvasPayloadCodec.encodeStroke(currentPayload),
-                    zIndex = nextZIndex(workingPage),
+                    zIndex = nextZIndex(currentPage),
                   )
-                onCommitStroke(strokeEl)
+                onCommitStrokeLatest(strokeEl)
               }
             }
           }
@@ -1898,10 +2013,8 @@ private fun InteractiveCanvasStage(
       inlineEditingElementId = inlineEditingElementId,
       inlinePlaceholder = inlinePlaceholder,
       onInlineTextChange = onInlineTextChange,
-      showRotationAngleBadge = showRotationAngleBadge,
       activeStrokePreview = activeStroke,
-      verticalGuides = vGuides,
-      horizontalGuides = hGuides,
+      liveTransformProvider = { currentLiveTransform },
       playingVoiceElementId = playingVoiceElementId,
       onVoiceElementClick = onVoiceElementClick,
     )
@@ -2018,7 +2131,8 @@ private fun EditorInspectorContent(
   onColorChange: (String) -> Unit,
   onStrokeSizeChange: (Float) -> Unit,
   onStylusOnlyChange: (Boolean) -> Unit,
-  onAddTextClick: () -> Unit,
+  onWriteOnPageClick: () -> Unit,
+  onAddDiagramBoxClick: () -> Unit,
   onOpenStickerStudio: () -> Unit,
   onStartDrawMode: () -> Unit,
   onEditSelectedText: (CanvasElement) -> Unit,
@@ -2083,7 +2197,7 @@ private fun EditorInspectorContent(
             }
 
             OutlinedButton(
-              onClick = onAddTextClick,
+              onClick = onWriteOnPageClick,
               border = BorderStroke(1.dp, palette.borderSubtle),
               shape = MaterialTheme.shapes.small,
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
@@ -2091,7 +2205,7 @@ private fun EditorInspectorContent(
             ) {
               Icon(Icons.Outlined.TextFields, contentDescription = null, modifier = Modifier.size(16.dp))
               Spacer(modifier = Modifier.width(4.dp))
-              Text(strings.editorAddTextBox, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+              Text(strings.editorWriteOnPage, style = MaterialTheme.typography.labelMedium, maxLines = 1)
             }
 
             OutlinedButton(
@@ -2198,25 +2312,77 @@ private fun EditorInspectorContent(
       }
     }
     EditorToolMode.TEXT -> {
-      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-          text = strings.editorInlineTextHint,
-          style = MaterialTheme.typography.bodySmall,
-          color = palette.textSecondary,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Button(
-            onClick = onAddTextClick,
-            colors = ButtonDefaults.buttonColors(containerColor = palette.goldAccent, contentColor = SankalanTokens.Walnut900),
-            modifier = Modifier.testTag("editor_add_text_button"),
-          ) {
-            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(strings.editorAddTextBox)
+      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Section 1: Natural Line-by-Line Page Writing (Cursor inside page margins)
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+              text = strings.editorWriteOnPage,
+              style = MaterialTheme.typography.labelLarge,
+              color = palette.goldAccent,
+            )
+            Text(
+              text = strings.editorPageWritingHint,
+              style = MaterialTheme.typography.bodySmall,
+              color = palette.textSecondary,
+            )
           }
-          if (selectedElement?.type == "text") {
-            OutlinedButton(onClick = { onEditSelectedText(selectedElement) }) {
-              Text(strings.editorEditTextTitle)
+          Button(
+            onClick = onWriteOnPageClick,
+            colors = ButtonDefaults.buttonColors(containerColor = palette.goldAccent, contentColor = SankalanTokens.Walnut900),
+            modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_write_on_page_button"),
+          ) {
+            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(strings.editorWriteOnPage, maxLines = 1)
+          }
+        }
+
+        // Section 2: Separate Diagram & Floating Text Box System
+        Surface(
+          shape = MaterialTheme.shapes.small,
+          color = palette.shelfSurface,
+          border = BorderStroke(1.dp, palette.borderSubtle),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            Text(
+              text = strings.editorDiagramSectionTitle,
+              style = MaterialTheme.typography.labelMedium,
+              color = palette.textPrimary,
+            )
+            Row(
+              modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              OutlinedButton(
+                onClick = onAddDiagramBoxClick,
+                border = BorderStroke(1.dp, palette.borderGold),
+                modifier = Modifier.minimumInteractiveComponentSize().testTag("editor_add_diagram_box_button"),
+              ) {
+                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(strings.editorAddDiagramBox, maxLines = 1)
+              }
+              if (selectedElement != null && isDiagramTextBox(selectedElement)) {
+                OutlinedButton(
+                  onClick = { onEditSelectedText(selectedElement) },
+                  border = BorderStroke(1.dp, palette.borderSubtle),
+                  modifier = Modifier.minimumInteractiveComponentSize(),
+                ) {
+                  Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text(strings.editorEditTextTitle, maxLines = 1)
+                }
+              }
             }
           }
         }

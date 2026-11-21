@@ -160,6 +160,10 @@ interface SankalanStrings {
   val editorToolLayers: String
   val editorToolPageInfo: String
   val editorAddTextBox: String
+  val editorWriteOnPage: String
+  val editorPageWritingHint: String
+  val editorDiagramSectionTitle: String
+  val editorAddDiagramBox: String
   val editorEditTextTitle: String
   val editorTextPlaceholder: String
   val editorFontLabel: String
@@ -596,7 +600,11 @@ object StringsEn : SankalanStrings {
   override val editorToolShapes = "Shapes"
   override val editorToolLayers = "Layers"
   override val editorToolPageInfo = "Page Info"
-  override val editorAddTextBox = "Add Text"
+  override val editorAddTextBox = "Write on Page"
+  override val editorWriteOnPage = "Write on Page"
+  override val editorPageWritingHint = "Type naturally line by line right inside the page — no floating box needed."
+  override val editorDiagramSectionTitle = "Diagram & Floating Boxes"
+  override val editorAddDiagramBox = "+ Diagram Text Box"
   override val editorEditTextTitle = "Edit Text & Typography"
   override val editorTextPlaceholder = "Write your memory in বাংলা or English…"
   override val editorFontLabel = "Diary & Handwriting Font"
@@ -707,7 +715,7 @@ object StringsEn : SankalanStrings {
   override val highContrastDescription = "Boosts text and border contrast across dark and light surfaces."
   override val privacyAndStorageTitle = "Privacy & Local Storage"
   override val privacyAndStorageBody = "All journals, voice clips, and PIN hashes stay strictly offline on your device. No account or hidden telemetry exists."
-  override val appVersionLabel = "Sankalan-t · Version 1.0 (NRST.tech)"
+  override val appVersionLabel = "Sankalan-t · Version 1.0.2 (NRST.tech)"
 
   override val studioCatFlorals = "Florals (Pack 2)"
   override val studioCatEphemera = "Ephemera (Pack 3)"
@@ -1026,7 +1034,11 @@ object StringsBnBd : SankalanStrings {
   override val editorToolShapes = "আকৃতি"
   override val editorToolLayers = "লেয়ার"
   override val editorToolPageInfo = "পাতার তথ্য"
-  override val editorAddTextBox = "নতুন লেখা যোগ"
+  override val editorAddTextBox = "পৃষ্ঠায় লিখুন"
+  override val editorWriteOnPage = "পৃষ্ঠায় লিখুন"
+  override val editorPageWritingHint = "কোনো বক্স ছাড়াই সরাসরি পাতার ভেতরে লাইন-বাই-লাইন টাইপ করুন।"
+  override val editorDiagramSectionTitle = "ডায়াগ্রাম ও ফ্লোটিং টেক্সট বক্স"
+  override val editorAddDiagramBox = "+ ডায়াগ্রাম টেক্সট বক্স"
   override val editorEditTextTitle = "লেখা ও ফন্ট সাজান"
   override val editorTextPlaceholder = "বাংলা বা ইংরেজিতে আপনার মনের কথা লিখুন…"
   override val editorFontLabel = "বাংলা ও ইংরেজি হস্তাক্ষর ফন্ট"
@@ -1137,7 +1149,7 @@ object StringsBnBd : SankalanStrings {
   override val highContrastDescription = "ডার্ক ও লাইট উভয় মোডে লেখা ও বর্ডারের স্পষ্টতা বাড়ায়।"
   override val privacyAndStorageTitle = "গোপনীয়তা ও লোকাল স্টোরেজ"
   override val privacyAndStorageBody = "আপনার সমস্ত ডায়েরি, ভয়েস নোট ও পিন কোড সম্পূর্ণ অফলাইনে নিজস্ব ডিভাইসে সুরক্ষিত থাকে।"
-  override val appVersionLabel = "সংকলন-ৎ · সংস্করণ ১.০ (NRST.tech)"
+  override val appVersionLabel = "সংকলন-ৎ · সংস্করণ ১.০.২ (NRST.tech)"
 
   override val studioCatFlorals = "ফুল ও পাতা (প্যাক ২)"
   override val studioCatEphemera = "ইফেমেরা ও কাগজ (প্যাক ৩)"
@@ -1214,7 +1226,7 @@ object StringsBnBd : SankalanStrings {
   override val updateManifestCopiedMsg = "version.json নমুনা কপি হয়েছে!"
 
   override val homeHeroTagline = "আপনার জীবনের স্মৃতির সাথে"
-  override val editorInlineTextHint = "কাগজের উপরেই সরাসরি লিখুন…"
+  override val editorInlineTextHint = "কাগজের লাইনের ভেতরে সরাসরি লিখুন…"
   override val editorQuickOrbLabel = "কুইক টুলস"
   override val editorQuickOrbPen = "কলম / স্টাইলাস"
   override val editorQuickOrbPencil = "পেন্সিল"

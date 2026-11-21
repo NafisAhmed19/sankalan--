@@ -284,6 +284,33 @@ fun copyPickedPhotoToInternalMedia(context: Context, uri: Uri): String? {
 fun nextZIndex(page: Page): Int =
   (page.elements.maxOfOrNull { it.zIndex } ?: 0) + 1
 
+const val PAGE_BODY_ASSET_ID = "page_body"
+const val DIAGRAM_BOX_ASSET_ID = "diagram_box"
+
+fun isPageBodyElement(el: CanvasElement): Boolean =
+  el.type == "text" && (
+    el.assetId == PAGE_BODY_ASSET_ID ||
+      el.id.endsWith("-text-1") ||
+      (el.assetId == null && el.w >= 0.78f && el.h >= 0.45f && abs(el.rotation) < 0.5f)
+    )
+
+fun isDiagramTextBox(el: CanvasElement): Boolean =
+  el.type == "text" && !isPageBodyElement(el)
+
+data class LiveElementTransform(
+  val targetIds: Set<String> = emptySet(),
+  val anchorElementId: String? = null,
+  val dxNorm: Float = 0f,
+  val dyNorm: Float = 0f,
+  val scaleX: Float = 1f,
+  val scaleY: Float = 1f,
+  val rotationOverrideDeg: Float? = null,
+  val rotationDeltaDeg: Float = 0f,
+  val showRotationBadge: Boolean = false,
+  val verticalGuides: List<Float> = emptyList(),
+  val horizontalGuides: List<Float> = emptyList(),
+)
+
 enum class ElementHitZone {
   BODY,
   ROTATE_HANDLE,
@@ -327,17 +354,17 @@ object CanvasTransformMath {
     val halfW = el.w * 0.5f
     val halfH = el.h * 0.5f
     if (isSelected) {
-      // Top-center rotate handle sits just above top edge (approx -halfH - 0.055f)
+      // Top-center rotate handle sits above top edge (approx -halfH - 0.055f)
       val rotCenterY = -halfH - 0.055f
-      if (abs(lx) <= 0.075f && abs(ly - rotCenterY) <= 0.07f) {
+      if (abs(lx) <= 0.10f && abs(ly - rotCenterY) <= 0.085f) {
         return ElementHitZone.ROTATE_HANDLE
       }
       // Bottom-right resize handle sits at (halfW, halfH)
-      if (abs(lx - halfW) <= 0.075f && abs(ly - halfH) <= 0.075f) {
+      if (abs(lx - halfW) <= 0.095f && abs(ly - halfH) <= 0.095f) {
         return ElementHitZone.RESIZE_HANDLE
       }
     }
-    val pad = 0.018f
+    val pad = 0.02f
     if (lx in (-halfW - pad)..(halfW + pad) && ly in (-halfH - pad)..(halfH + pad)) {
       return ElementHitZone.BODY
     }
@@ -355,6 +382,36 @@ object CanvasTransformMath {
   ): Float {
     val deg = Math.toDegrees(kotlin.math.atan2((pointerY - centerY).toDouble(), (pointerX - centerX).toDouble())).toFloat() + 90f
     return ((deg % 360f) + 360f) % 360f
+  }
+
+  fun commitLiveTransform(
+    elements: List<CanvasElement>,
+    transform: LiveElementTransform,
+  ): List<CanvasElement> {
+    if (transform.targetIds.isEmpty()) return elements
+    return elements.map { item ->
+      if (item.id !in transform.targetIds) {
+        item
+      } else if (item.id == transform.anchorElementId) {
+        val newW = (item.w * transform.scaleX).coerceIn(0.08f, 0.98f)
+        val newH = (item.h * transform.scaleY).coerceIn(0.04f, 0.94f)
+        val cx = item.x + item.w * 0.5f + transform.dxNorm
+        val cy = item.y + item.h * 0.5f + transform.dyNorm
+        val nextRot = (((transform.rotationOverrideDeg ?: (item.rotation + transform.rotationDeltaDeg)) % 360f) + 360f) % 360f
+        item.copy(
+          x = (cx - newW * 0.5f).coerceIn(-0.25f, 0.96f),
+          y = (cy - newH * 0.5f).coerceIn(-0.15f, 0.96f),
+          w = newW,
+          h = newH,
+          rotation = nextRot,
+        )
+      } else {
+        item.copy(
+          x = (item.x + transform.dxNorm).coerceIn(-0.25f, 0.96f),
+          y = (item.y + transform.dyNorm).coerceIn(-0.15f, 0.96f),
+        )
+      }
+    }
   }
 
   fun applyPinchRotateAndPan(

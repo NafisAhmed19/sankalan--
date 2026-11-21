@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Mood
@@ -53,9 +55,11 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -129,6 +133,7 @@ fun ParchmentPageSurface(
   activeStrokePreview: StrokePayload? = null,
   verticalGuides: List<Float> = emptyList(),
   horizontalGuides: List<Float> = emptyList(),
+  liveTransformProvider: () -> LiveElementTransform? = { null },
   playingVoiceElementId: String? = null,
   onVoiceElementClick: ((CanvasElement) -> Unit)? = null,
 ) {
@@ -158,6 +163,7 @@ fun ParchmentPageSurface(
       modifier = Modifier.aspectRatio(0.72f, matchHeightConstraintsFirst = fitByHeight),
     ) {
       BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+      val density = LocalDensity.current
       val canvasW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
       val canvasH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
       val scaleFactor = (canvasW / 360.dp.value / 2.2f).coerceIn(0.45f, 1.85f)
@@ -392,7 +398,7 @@ fun ParchmentPageSurface(
       sortedElements.forEach { el ->
         when (el.type) {
           "stroke" -> {
-            val payload = CanvasPayloadCodec.decodeStroke(el.strokePointsJson)
+            val payload = remember(el.strokePointsJson) { CanvasPayloadCodec.decodeStroke(el.strokePointsJson) }
             if (payload != null && payload.points.isNotEmpty()) {
               Canvas(modifier = Modifier.fillMaxSize().alpha(el.opacity)) {
                 drawStrokePayload(payload)
@@ -402,9 +408,11 @@ fun ParchmentPageSurface(
           else -> {
             val px = (el.x * canvasW).roundToInt()
             val py = (el.y * canvasH).roundToInt()
-            val pwDp = with(androidx.compose.ui.platform.LocalDensity.current) { (el.w * canvasW).toDp() }
-            val phDp = with(androidx.compose.ui.platform.LocalDensity.current) { (el.h * canvasH).toDp() }
-            val isSelected = el.id == selectedElementId
+            val pwDp = with(density) { (el.w * canvasW).toDp() }
+            val phDp = with(density) { (el.h * canvasH).toDp() }
+            val isPageBody = isPageBodyElement(el)
+            val isDiagramBox = isDiagramTextBox(el) && el.assetId == DIAGRAM_BOX_ASSET_ID
+            val isSelected = !isPageBody && el.id == selectedElementId
             val isInlineEditing = el.id == inlineEditingElementId && el.type == "text" && onInlineTextChange != null
 
             Box(
@@ -413,10 +421,27 @@ fun ParchmentPageSurface(
                   .offset { IntOffset(px, py) }
                   .width(pwDp.coerceAtLeast(24.dp))
                   .height(phDp.coerceAtLeast(20.dp))
-                  .rotate(el.rotation)
+                  .graphicsLayer {
+                    val lt = if (!isPageBody) liveTransformProvider() else null
+                    if (lt != null && el.id in lt.targetIds) {
+                      translationX = lt.dxNorm * canvasW
+                      translationY = lt.dyNorm * canvasH
+                      if (el.id == lt.anchorElementId) {
+                        scaleX = lt.scaleX
+                        scaleY = lt.scaleY
+                        rotationZ = lt.rotationOverrideDeg ?: (el.rotation + lt.rotationDeltaDeg)
+                      } else {
+                        rotationZ = el.rotation
+                      }
+                    } else {
+                      rotationZ = el.rotation
+                    }
+                    transformOrigin = TransformOrigin.Center
+                  }
                   .alpha(el.opacity)
                   .then(
                     when {
+                      isInlineEditing && isPageBody -> Modifier
                       isInlineEditing ->
                         Modifier
                           .background(
@@ -435,6 +460,18 @@ fun ParchmentPageSurface(
                           color = SankalanTokens.AntiqueGold,
                           shape = RoundedCornerShape(5.dp),
                         )
+                      isDiagramBox ->
+                        Modifier
+                          .background(
+                            if (preset.isDarkPaper) SankalanTokens.Walnut900.copy(alpha = 0.16f)
+                            else SankalanTokens.AntiqueGold.copy(alpha = 0.06f),
+                            RoundedCornerShape(6.dp),
+                          )
+                          .border(
+                            width = 0.9.dp,
+                            color = SankalanTokens.AntiqueGold.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(6.dp),
+                          )
                       else -> Modifier
                     }
                   ),
@@ -447,10 +484,11 @@ fun ParchmentPageSurface(
                       scaleFactor = scaleFactor,
                       placeholder = inlinePlaceholder,
                       isDarkPaper = preset.isDarkPaper,
+                      isPageBody = isPageBody,
                       onTextChange = { nextTxt -> onInlineTextChange?.invoke(el.id, nextTxt) },
                     )
                   } else {
-                    RenderTextElement(el, scaleFactor)
+                    RenderTextElement(el, scaleFactor, isPageBody = isPageBody)
                   }
                 }
                 "image" -> RenderImageElement(el)
@@ -477,68 +515,77 @@ fun ParchmentPageSurface(
               }
 
               if (isSelected && !isInlineEditing) {
-                // Top-center rotation stem & gold rotate handle knob
+                // Top-center rotation stem & enlarged gold rotate handle knob
                 Box(
                   modifier =
                     Modifier
                       .align(Alignment.TopCenter)
-                      .offset(y = (-24).dp),
+                      .offset(y = (-30).dp),
                   contentAlignment = Alignment.TopCenter,
                 ) {
                   Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Surface(
                       shape = CircleShape,
                       color = SankalanTokens.AntiqueGold,
-                      border = BorderStroke(1.4.dp, SankalanTokens.Walnut900),
-                      shadowElevation = 3.dp,
-                      modifier = Modifier.size(20.dp),
+                      border = BorderStroke(1.6.dp, SankalanTokens.Walnut900),
+                      shadowElevation = 4.dp,
+                      modifier = Modifier.size(24.dp),
                     ) {
                       Box(contentAlignment = Alignment.Center) {
                         Icon(
                           imageVector = Icons.Outlined.RotateRight,
                           contentDescription = null,
                           tint = SankalanTokens.Walnut900,
-                          modifier = Modifier.size(13.dp),
+                          modifier = Modifier.size(15.dp),
                         )
                       }
                     }
                     Box(
                       modifier =
                         Modifier
-                          .width(1.6.dp)
-                          .height(6.dp)
+                          .width(1.8.dp)
+                          .height(8.dp)
                           .background(SankalanTokens.AntiqueGold)
                     )
                   }
                 }
 
                 // Live rotation degree pill when rotating or rotated
-                if (showRotationAngleBadge || kotlin.math.abs(el.rotation) > 0.5f) {
+                val liveTransform = liveTransformProvider()
+                val liveAngle =
+                  if (liveTransform != null && liveTransform.anchorElementId == el.id) {
+                    liveTransform.rotationOverrideDeg ?: (el.rotation + liveTransform.rotationDeltaDeg)
+                  } else {
+                    el.rotation
+                  }
+                val liveRotating =
+                  showRotationAngleBadge || (liveTransform != null && liveTransform.showRotationBadge && liveTransform.anchorElementId == el.id)
+                if (liveRotating || kotlin.math.abs(liveAngle) > 0.5f) {
                   Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = SankalanTokens.Walnut900.copy(alpha = 0.88f),
                     border = BorderStroke(1.dp, SankalanTokens.AntiqueGold),
-                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-20).dp),
+                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-24).dp),
                   ) {
                     Text(
-                      text = "${el.rotation.roundToInt()}°",
-                      fontSize = 9.sp,
+                      text = "${(((liveAngle % 360f) + 360f) % 360f).roundToInt()}°",
+                      fontSize = 10.sp,
                       fontWeight = FontWeight.Bold,
                       color = SankalanTokens.GoldHighlight,
-                      modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                      modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                   }
                 }
 
-                // Visual bottom-right resize knob
+                // Enlarged visual bottom-right resize knob
                 Box(
                   modifier =
                     Modifier
                       .align(Alignment.BottomEnd)
-                      .offset(x = 6.dp, y = 6.dp)
-                      .size(16.dp)
+                      .offset(x = 7.dp, y = 7.dp)
+                      .size(18.dp)
                       .background(SankalanTokens.AntiqueGold, CircleShape)
-                      .border(1.5.dp, SankalanTokens.Walnut900, CircleShape)
+                      .border(1.6.dp, SankalanTokens.Walnut900, CircleShape)
                 )
               }
             }
@@ -553,11 +600,14 @@ fun ParchmentPageSurface(
         }
       }
 
-      // 5. Magnetic Snapping Alignment Guides (Gold dashed hairlines)
-      if (verticalGuides.isNotEmpty() || horizontalGuides.isNotEmpty()) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+      // 5. Magnetic Snapping Alignment Guides (Gold dashed hairlines read inside Draw phase)
+      Canvas(modifier = Modifier.fillMaxSize()) {
+        val lt = liveTransformProvider()
+        val vList = lt?.verticalGuides ?: verticalGuides
+        val hList = lt?.horizontalGuides ?: horizontalGuides
+        if (vList.isNotEmpty() || hList.isNotEmpty()) {
           val dash = PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f)
-          verticalGuides.forEach { gx ->
+          vList.forEach { gx ->
             drawLine(
               color = SankalanTokens.AntiqueGold,
               start = Offset(gx * size.width, 0f),
@@ -566,7 +616,7 @@ fun ParchmentPageSurface(
               pathEffect = dash,
             )
           }
-          horizontalGuides.forEach { gy ->
+          hList.forEach { gy ->
             drawLine(
               color = SankalanTokens.AntiqueGold,
               start = Offset(0f, gy * size.height),
@@ -657,6 +707,7 @@ private fun RenderInlineTextEditor(
   scaleFactor: Float,
   placeholder: String,
   isDarkPaper: Boolean,
+  isPageBody: Boolean,
   onTextChange: (String) -> Unit,
 ) {
   val fontFamily = resolveEditorFontFamily(el.fontId)
@@ -672,7 +723,7 @@ private fun RenderInlineTextEditor(
     TextStyle(
       fontFamily = fontFamily,
       fontSize = baseSize.sp,
-      lineHeight = (baseSize * 1.58f).sp,
+      lineHeight = (baseSize * if (isPageBody) 1.62f else 1.50f).sp,
       fontWeight = if (el.bold) FontWeight.Bold else FontWeight.Normal,
       fontStyle = if (el.italic) FontStyle.Italic else FontStyle.Normal,
       textDecoration = if (el.underline) TextDecoration.Underline else TextDecoration.None,
@@ -687,12 +738,19 @@ private fun RenderInlineTextEditor(
     keyboardController?.show()
   }
 
+  val baseModifier =
+    if (isPageBody) {
+      Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 1.dp).verticalScroll(rememberScrollState())
+    } else {
+      Modifier.fillMaxSize().padding(5.dp)
+    }
+
   BasicTextField(
     value = el.text.orEmpty(),
     onValueChange = onTextChange,
     textStyle = textStyle,
     cursorBrush = SolidColor(ink),
-    modifier = Modifier.fillMaxSize().padding(4.dp).focusRequester(focusRequester),
+    modifier = baseModifier.focusRequester(focusRequester),
     decorationBox = { innerTextField ->
       Box(modifier = Modifier.fillMaxSize()) {
         if (el.text.isNullOrEmpty() && placeholder.isNotEmpty()) {
@@ -708,7 +766,11 @@ private fun RenderInlineTextEditor(
 }
 
 @Composable
-private fun RenderTextElement(el: CanvasElement, scaleFactor: Float) {
+private fun RenderTextElement(
+  el: CanvasElement,
+  scaleFactor: Float,
+  isPageBody: Boolean = false,
+) {
   val fontFamily = resolveEditorFontFamily(el.fontId)
   val baseSize = (el.fontSize ?: 15f) * scaleFactor.coerceIn(0.65f, 1.35f)
   val ink = parseHexColor(el.colorHex ?: "#302C29", SankalanTokens.Ink)
@@ -724,14 +786,16 @@ private fun RenderTextElement(el: CanvasElement, scaleFactor: Float) {
       TextStyle(
         fontFamily = fontFamily,
         fontSize = baseSize.sp,
-        lineHeight = (baseSize * 1.58f).sp,
+        lineHeight = (baseSize * if (isPageBody) 1.62f else 1.50f).sp,
         fontWeight = if (el.bold) FontWeight.Bold else FontWeight.Normal,
         fontStyle = if (el.italic) FontStyle.Italic else FontStyle.Normal,
         textDecoration = if (el.underline) TextDecoration.Underline else TextDecoration.None,
         color = ink,
         textAlign = align,
       ),
-    modifier = Modifier.fillMaxSize().padding(4.dp),
+    modifier =
+      if (isPageBody) Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 1.dp)
+      else Modifier.fillMaxSize().padding(5.dp),
   )
 }
 

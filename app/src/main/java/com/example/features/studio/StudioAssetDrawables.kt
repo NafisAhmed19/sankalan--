@@ -86,9 +86,13 @@ fun StudioAssetGraphic(
   modifier: Modifier = Modifier,
 ) {
   if (!blobRef.isNullOrBlank() && elementType != "voice") {
-    val file = File(blobRef)
+    val model =
+      androidx.compose.runtime.remember(blobRef) {
+        val file = File(blobRef)
+        if (file.exists()) file else blobRef
+      }
     AsyncImage(
-      model = if (file.exists()) file else blobRef,
+      model = model,
       contentDescription = labelText ?: "Uploaded sticker",
       contentScale = ContentScale.Fit,
       modifier = modifier.fillMaxSize(),

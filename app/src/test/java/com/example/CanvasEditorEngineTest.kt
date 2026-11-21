@@ -292,4 +292,77 @@ class CanvasEditorEngineTest {
     assertEquals(0.25f, transformed.h, 0.001f)
     assertEquals(45f, transformed.rotation, 0.01f)
   }
+
+  @Test
+  fun `page body element vs diagram text box distinction and GPU LiveElementTransform commit`() {
+    val bodyEl =
+      CanvasElement(
+        id = "p1-page-body",
+        type = "text",
+        assetId = com.example.features.editor.PAGE_BODY_ASSET_ID,
+        x = 0.065f,
+        y = 0.165f,
+        w = 0.87f,
+        h = 0.775f,
+        text = "Daily page writing",
+      )
+    val legacyBodyEl =
+      CanvasElement(
+        id = "page-1-text-1",
+        type = "text",
+        assetId = null,
+        x = 0.08f,
+        y = 0.14f,
+        w = 0.84f,
+        h = 0.72f,
+        text = "Legacy seeded page body",
+      )
+    val diagramBoxEl =
+      CanvasElement(
+        id = "diag-1",
+        type = "text",
+        assetId = com.example.features.editor.DIAGRAM_BOX_ASSET_ID,
+        x = 0.22f,
+        y = 0.36f,
+        w = 0.48f,
+        h = 0.16f,
+        text = "Diagram Node A",
+      )
+    val stickerEl =
+      CanvasElement(
+        id = "sticker-move",
+        type = "sticker",
+        x = 0.30f,
+        y = 0.40f,
+        w = 0.20f,
+        h = 0.20f,
+        rotation = 10f,
+      )
+
+    assertTrue(com.example.features.editor.isPageBodyElement(bodyEl))
+    assertFalse(com.example.features.editor.isDiagramTextBox(bodyEl))
+    assertTrue(com.example.features.editor.isPageBodyElement(legacyBodyEl))
+    assertFalse(com.example.features.editor.isPageBodyElement(diagramBoxEl))
+    assertTrue(com.example.features.editor.isDiagramTextBox(diagramBoxEl))
+
+    val live =
+      com.example.features.editor.LiveElementTransform(
+        targetIds = setOf(stickerEl.id),
+        anchorElementId = stickerEl.id,
+        dxNorm = 0.10f,
+        dyNorm = -0.05f,
+        scaleX = 1.5f,
+        scaleY = 1.5f,
+        rotationOverrideDeg = 90f,
+        showRotationBadge = true,
+      )
+    val committed = CanvasTransformMath.commitLiveTransform(listOf(bodyEl, stickerEl), live)
+    assertEquals(bodyEl, committed[0])
+    val movedSticker = committed[1]
+    assertEquals(0.30f, movedSticker.w, 0.001f)
+    assertEquals(0.30f, movedSticker.h, 0.001f)
+    assertEquals(0.35f, movedSticker.x, 0.001f)
+    assertEquals(0.30f, movedSticker.y, 0.001f)
+    assertEquals(90f, movedSticker.rotation, 0.001f)
+  }
 }
