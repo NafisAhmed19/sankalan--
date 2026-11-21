@@ -80,6 +80,8 @@ object BackupArchiveManager {
 
   private const val MAX_MANIFEST_BYTES = 16L * 1024L * 1024L // 16 MB
   private const val MAX_MEDIA_ENTRY_BYTES = 50L * 1024L * 1024L // 50 MB
+  private const val MAX_TOTAL_RESTORED_BYTES = 256L * 1024L * 1024L // 256 MB
+  private const val MAX_ARCHIVE_ENTRIES = 5_000
 
   private fun readBoundedBytes(input: InputStream, maxBytes: Long): ByteArray {
     val buffer = ByteArray(8192)
@@ -95,16 +97,24 @@ object BackupArchiveManager {
     return out.toByteArray()
   }
 
-  private fun copyBounded(input: InputStream, output: OutputStream, maxBytes: Long) {
+  private fun copyBounded(
+    input: InputStream,
+    output: OutputStream,
+    maxEntryBytes: Long,
+    remainingArchiveBudget: Long,
+  ): Long {
     val buffer = ByteArray(8192)
     var total = 0L
     while (true) {
       val read = input.read(buffer)
       if (read <= 0) break
       total += read
-      if (total > maxBytes) error("Media entry exceeds safe size limit")
+      if (total > maxEntryBytes || total > remainingArchiveBudget) {
+        error("Media entry exceeds safe size limit")
+      }
       output.write(buffer, 0, read)
     }
+    return total
   }
 
   fun readFullBackup(
@@ -115,14 +125,21 @@ object BackupArchiveManager {
     val canonicalBase = restoredMediaDir.canonicalPath + File.separator
     var manifestJson: String? = null
     val extractedMediaPaths = mutableMapOf<String, String>() // zipEntryName -> newAbsPath
+    var totalBytesRestored = 0L
+    var entryCount = 0
 
     ZipInputStream(inputStream).use { zip ->
       var entry = zip.nextEntry
       while (entry != null) {
+        entryCount += 1
+        if (entryCount > MAX_ARCHIVE_ENTRIES) error("Archive exceeds safe entry limit")
         if (!entry.isDirectory) {
           when {
             entry.name == ENTRY_MANIFEST -> {
-              manifestJson = readBoundedBytes(zip, MAX_MANIFEST_BYTES).toString(Charsets.UTF_8)
+              val manifestBytes = readBoundedBytes(zip, MAX_MANIFEST_BYTES)
+              totalBytesRestored += manifestBytes.size
+              if (totalBytesRestored > MAX_TOTAL_RESTORED_BYTES) error("Archive exceeds safe size limit")
+              manifestJson = manifestBytes.toString(Charsets.UTF_8)
             }
             entry.name.startsWith("media/") -> {
               val rawName = entry.name.removePrefix("media/")
@@ -134,7 +151,12 @@ object BackupArchiveManager {
               if (sanitized.isNotBlank() && sanitized != "." && sanitized != "..") {
                 val outFile = File(restoredMediaDir, sanitized)
                 if (outFile.canonicalPath.startsWith(canonicalBase)) {
-                  FileOutputStream(outFile).use { copyBounded(zip, it, MAX_MEDIA_ENTRY_BYTES) }
+                  val remainingBudget = MAX_TOTAL_RESTORED_BYTES - totalBytesRestored
+                  val written =
+                    FileOutputStream(outFile).use {
+                      copyBounded(zip, it, MAX_MEDIA_ENTRY_BYTES, remainingBudget)
+                    }
+                  totalBytesRestored += written
                   extractedMediaPaths[entry.name] = outFile.absolutePath
                 }
               }
@@ -155,8 +177,9 @@ object BackupArchiveManager {
             page.copy(
               elements =
                 page.elements.map { el ->
+                  // Only keep blobRef if it was safely extracted from this archive's media/ directory.
                   val mapped = el.blobRef?.let { extractedMediaPaths[it] }
-                  if (mapped != null) el.copy(blobRef = mapped) else el
+                  el.copy(blobRef = mapped)
                 }
             )
           }

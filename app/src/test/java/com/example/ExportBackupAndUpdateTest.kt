@@ -312,4 +312,56 @@ class ExportBackupAndUpdateTest {
     assertFalse(File(context.filesDir, "escaped_payload.txt").exists())
     assertFalse(File(context.filesDir.parentFile, "escaped_payload.txt").exists())
   }
+
+  @Test
+  fun `update checker blocks authority spoofing URLs and backup restore strips unmapped external blobRefs`() {
+    assertFalse(AppUpdateChecker.isSafeHttpsUrl("https://github.com@evil.example/apk"))
+    assertFalse(AppUpdateChecker.isSafeHttpsUrl("https://user:pass@github.com/octo/repo"))
+    assertTrue(AppUpdateChecker.isSafeHttpsUrl("https://github.com/NafisAhmed19/sankalan--"))
+
+    val spoofManifest =
+      """
+      {
+        "versionCode": 99,
+        "versionName": "9.9.9",
+        "downloadUrl": "https://github.com@evil.example/malware.apk"
+      }
+      """.trimIndent()
+    assertTrue(AppUpdateChecker.parseUpdateManifest(spoofManifest, 1, "1.0") is UpdateCheckResult.Failed)
+
+    // Backup manifest attempting to inject a local shared_prefs path via blobRef must be cleared
+    val craftedZip = ByteArrayOutputStream()
+    ZipOutputStream(craftedZip).use { zip ->
+      zip.putNextEntry(ZipEntry("manifest.json"))
+      zip.write(
+        """
+        {
+          "formatVersion": 1,
+          "createdAt": 1700000000000,
+          "appName": "Sankalan-t",
+          "diaries": [
+            {
+              "diary": {"id": "d-inj", "title": "Injected", "cover": {"presetId":"classic","colorHex":"#593B2B","accentHex":"#B08A4F","monogram":"ৎ"}, "pageIds": ["p-inj"]},
+              "pages": [
+                {
+                  "id": "p-inj",
+                  "diaryId": "d-inj",
+                  "order": 0,
+                  "background": {"presetId":"warm_ivory","tintHex":"#F6EFE2"},
+                  "elements": [
+                    {"id": "img-inj", "type": "image", "blobRef": "/data/data/com.example/shared_prefs/sankalan_lock_store.xml"}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        """.trimIndent().toByteArray(Charsets.UTF_8)
+      )
+      zip.closeEntry()
+    }
+    val restored = BackupArchiveManager.readFullBackup(context, ByteArrayInputStream(craftedZip.toByteArray()))
+    val injectedEl = restored.single().pages.single().elements.single()
+    assertEquals(null, injectedEl.blobRef)
+  }
 }

@@ -37,12 +37,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -62,25 +65,96 @@ import com.example.ui.theme.SankalanSpacing
 import com.example.ui.theme.SankalanTokens
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
+import kotlinx.coroutines.delay
 
 object PinHasher {
+  const val ALGO_SHA256_V1 = "sha256_v1"
+  const val ALGO_PBKDF2_SHA256_V2 = "pbkdf2_sha256_v2"
+  const val ALGO_PBKDF2_SHA1_V2 = "pbkdf2_sha1_v2"
+  private const val PBKDF2_ITERATIONS = 60_000
+  private const val PBKDF2_KEY_BITS = 256
+
   fun generateSalt(): String {
     val bytes = ByteArray(16)
     SecureRandom().nextBytes(bytes)
     return bytes.joinToString("") { "%02x".format(it) }
   }
 
+  /** Legacy single-round SHA-256 kept only for verifying & upgrading pre-existing v1 PINs. */
   fun hashPin(pin: String, salt: String): String {
     val digest = MessageDigest.getInstance("SHA-256")
     val bytes = digest.digest("$salt:$pin".toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }
   }
 
+  fun hashPinStrong(pin: String, saltHex: String): Pair<String, String> {
+    val saltBytes = saltHex.toByteArray(Charsets.UTF_8)
+    val preferredAlgo =
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) "PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1"
+    val algoTag =
+      if (preferredAlgo == "PBKDF2WithHmacSHA256") ALGO_PBKDF2_SHA256_V2 else ALGO_PBKDF2_SHA1_V2
+    val derived =
+      runCatching {
+        val spec = PBEKeySpec(pin.toCharArray(), saltBytes, PBKDF2_ITERATIONS, PBKDF2_KEY_BITS)
+        try {
+          SecretKeyFactory.getInstance(preferredAlgo).generateSecret(spec).encoded
+        } finally {
+          spec.clearPassword()
+        }
+      }.getOrElse {
+        // Guaranteed fallback on older JVMs lacking PBKDF2WithHmacSHA256: try HmacSHA1
+        val spec = PBEKeySpec(pin.toCharArray(), saltBytes, PBKDF2_ITERATIONS, PBKDF2_KEY_BITS)
+        try {
+          SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded
+        } finally {
+          spec.clearPassword()
+        }
+      }
+    val resolvedTag =
+      if (algoTag == ALGO_PBKDF2_SHA256_V2 &&
+        runCatching { SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256") }.isSuccess
+      ) {
+        ALGO_PBKDF2_SHA256_V2
+      } else {
+        ALGO_PBKDF2_SHA1_V2
+      }
+    return resolvedTag to derived.joinToString("") { "%02x".format(it) }
+  }
+
+  fun verifyWithAlgo(pin: String, salt: String, expectedHash: String, algo: String): Boolean {
+    val actual =
+      when (algo) {
+        ALGO_PBKDF2_SHA256_V2 -> derivePbkdf2(pin, salt, "PBKDF2WithHmacSHA256")
+        ALGO_PBKDF2_SHA1_V2 -> derivePbkdf2(pin, salt, "PBKDF2WithHmacSHA1")
+        else -> hashPin(pin, salt)
+      } ?: return false
+    return MessageDigest.isEqual(
+      actual.toByteArray(Charsets.UTF_8),
+      expectedHash.toByteArray(Charsets.UTF_8),
+    )
+  }
+
+  private fun derivePbkdf2(pin: String, salt: String, jcaName: String): String? =
+    runCatching {
+      val spec = PBEKeySpec(pin.toCharArray(), salt.toByteArray(Charsets.UTF_8), PBKDF2_ITERATIONS, PBKDF2_KEY_BITS)
+      try {
+        val bytes = SecretKeyFactory.getInstance(jcaName).generateSecret(spec).encoded
+        bytes.joinToString("") { "%02x".format(it) }
+      } finally {
+        spec.clearPassword()
+      }
+    }.getOrNull()
+
   fun isValidPinFormat(pin: String): Boolean =
     pin.length in 4..6 && pin.all { it in '0'..'9' }
 }
 
-class AppLockManager(private val context: Context) {
+class AppLockManager(
+  private val context: Context,
+  private val clockMs: () -> Long = { System.currentTimeMillis() },
+) {
   private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
   fun hasPin(): Boolean =
@@ -90,26 +164,76 @@ class AppLockManager(private val context: Context) {
   fun setPin(rawPin: String): Boolean {
     if (!PinHasher.isValidPinFormat(rawPin)) return false
     val salt = PinHasher.generateSalt()
-    val hash = PinHasher.hashPin(rawPin, salt)
+    val (algo, hash) = PinHasher.hashPinStrong(rawPin, salt)
     prefs.edit()
       .putString(KEY_SALT, salt)
       .putString(KEY_HASH, hash)
+      .putString(KEY_ALGO, algo)
+      .putInt(KEY_FAILED_ATTEMPTS, 0)
+      .putLong(KEY_LOCKOUT_UNTIL_MS, 0L)
       .apply()
     return true
   }
 
+  fun remainingLockoutSeconds(): Int {
+    val until = prefs.getLong(KEY_LOCKOUT_UNTIL_MS, 0L)
+    val diff = until - clockMs()
+    return if (diff > 0L) ((diff + 999L) / 1000L).toInt() else 0
+  }
+
+  fun failedAttemptsCount(): Int = prefs.getInt(KEY_FAILED_ATTEMPTS, 0)
+
   fun verifyPin(rawPin: String): Boolean {
+    if (remainingLockoutSeconds() > 0) return false
     val salt = prefs.getString(KEY_SALT, null) ?: return false
     val expected = prefs.getString(KEY_HASH, null) ?: return false
-    val actual = PinHasher.hashPin(rawPin, salt)
-    return MessageDigest.isEqual(
-      actual.toByteArray(Charsets.UTF_8),
-      expected.toByteArray(Charsets.UTF_8),
-    )
+    val algo = prefs.getString(KEY_ALGO, PinHasher.ALGO_SHA256_V1) ?: PinHasher.ALGO_SHA256_V1
+    val matched = PinHasher.verifyWithAlgo(rawPin, salt, expected, algo)
+    if (matched) {
+      resetLockout()
+      if (algo == PinHasher.ALGO_SHA256_V1) {
+        // Transparently upgrade legacy single-round SHA-256 PIN to PBKDF2-HMAC upon verified unlock
+        val newSalt = PinHasher.generateSalt()
+        val (newAlgo, newHash) = PinHasher.hashPinStrong(rawPin, newSalt)
+        prefs.edit()
+          .putString(KEY_SALT, newSalt)
+          .putString(KEY_HASH, newHash)
+          .putString(KEY_ALGO, newAlgo)
+          .apply()
+      }
+      return true
+    }
+
+    val nextAttempts = prefs.getInt(KEY_FAILED_ATTEMPTS, 0) + 1
+    val cooldownMs =
+      when {
+        nextAttempts >= 10 -> 120_000L
+        nextAttempts >= 8 -> 60_000L
+        nextAttempts >= 5 -> 30_000L
+        else -> 0L
+      }
+    prefs.edit()
+      .putInt(KEY_FAILED_ATTEMPTS, nextAttempts)
+      .putLong(KEY_LOCKOUT_UNTIL_MS, if (cooldownMs > 0L) clockMs() + cooldownMs else 0L)
+      .apply()
+    return false
+  }
+
+  fun resetLockout() {
+    prefs.edit()
+      .putInt(KEY_FAILED_ATTEMPTS, 0)
+      .putLong(KEY_LOCKOUT_UNTIL_MS, 0L)
+      .apply()
   }
 
   fun clearPin() {
-    prefs.edit().remove(KEY_SALT).remove(KEY_HASH).apply()
+    prefs.edit()
+      .remove(KEY_SALT)
+      .remove(KEY_HASH)
+      .remove(KEY_ALGO)
+      .remove(KEY_FAILED_ATTEMPTS)
+      .remove(KEY_LOCKOUT_UNTIL_MS)
+      .apply()
   }
 
   fun canUsePlatformBiometrics(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
@@ -139,6 +263,7 @@ class AppLockManager(private val context: Context) {
         executor,
         object : BiometricPrompt.AuthenticationCallback() {
           override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+            resetLockout()
             onSuccess()
           }
 
@@ -156,6 +281,9 @@ class AppLockManager(private val context: Context) {
     private const val PREFS_NAME = "sankalan_lock_store"
     private const val KEY_SALT = "pin_salt_v1"
     private const val KEY_HASH = "pin_hash_v1"
+    private const val KEY_ALGO = "pin_algo_v2"
+    private const val KEY_FAILED_ATTEMPTS = "pin_failed_attempts"
+    private const val KEY_LOCKOUT_UNTIL_MS = "pin_lockout_until_ms"
   }
 }
 
@@ -171,15 +299,32 @@ fun AppLockGateOverlay(
 
   var enteredPin by remember { mutableStateOf("") }
   var showError by remember { mutableStateOf(false) }
+  var lockoutSeconds by remember { mutableIntStateOf(lockManager.remainingLockoutSeconds()) }
+
+  LaunchedEffect(lockoutSeconds) {
+    if (lockoutSeconds > 0) {
+      delay(1_000L)
+      lockoutSeconds = lockManager.remainingLockoutSeconds()
+    }
+  }
 
   fun submitPin(candidate: String) {
+    val currentLockout = lockManager.remainingLockoutSeconds()
+    if (currentLockout > 0) {
+      lockoutSeconds = currentLockout
+      enteredPin = ""
+      showError = true
+      return
+    }
     if (lockManager.verifyPin(candidate)) {
       enteredPin = ""
       showError = false
+      lockoutSeconds = 0
       onUnlocked()
     } else {
       enteredPin = ""
       showError = true
+      lockoutSeconds = lockManager.remainingLockoutSeconds()
     }
   }
 
@@ -218,10 +363,17 @@ fun AppLockGateOverlay(
         textAlign = TextAlign.Center,
       )
       Spacer(modifier = Modifier.height(6.dp))
+      val subtitleText =
+        when {
+          lockoutSeconds > 0 ->
+            "${strings.appLockWrongPin} (${formatDigits(lockoutSeconds.toString(), numeralStyle)}s)"
+          showError -> strings.appLockWrongPin
+          else -> strings.appLockPinHint
+        }
       Text(
-        text = if (showError) strings.appLockWrongPin else strings.appLockPinHint,
+        text = subtitleText,
         style = MaterialTheme.typography.bodyMedium,
-        color = if (showError) SankalanTokens.Terracotta else SankalanTokens.Cream.copy(alpha = 0.76f),
+        color = if (showError || lockoutSeconds > 0) SankalanTokens.Terracotta else SankalanTokens.Cream.copy(alpha = 0.76f),
         textAlign = TextAlign.Center,
       )
 
@@ -255,6 +407,7 @@ fun AppLockGateOverlay(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
           ) {
             rowDigits.forEach { digit ->
+              val isKeypadEnabled = lockoutSeconds <= 0
               Surface(
                 shape = CircleShape,
                 color = SankalanTokens.Walnut800,
@@ -263,8 +416,9 @@ fun AppLockGateOverlay(
                   Modifier
                     .weight(1f)
                     .height(58.dp)
+                    .alpha(if (isKeypadEnabled) 1f else 0.45f)
                     .clip(CircleShape)
-                    .clickable(role = Role.Button) {
+                    .clickable(enabled = isKeypadEnabled, role = Role.Button) {
                       showError = false
                       if (enteredPin.length < 6) {
                         enteredPin += digit
@@ -315,8 +469,9 @@ fun AppLockGateOverlay(
               Modifier
                 .weight(1f)
                 .height(58.dp)
+                .alpha(if (lockoutSeconds <= 0) 1f else 0.45f)
                 .clip(CircleShape)
-                .clickable(role = Role.Button) {
+                .clickable(enabled = lockoutSeconds <= 0, role = Role.Button) {
                   showError = false
                   if (enteredPin.length < 6) enteredPin += "0"
                 }
@@ -333,7 +488,7 @@ fun AppLockGateOverlay(
 
           Button(
             onClick = { submitPin(enteredPin) },
-            enabled = enteredPin.length >= 4,
+            enabled = lockoutSeconds <= 0 && enteredPin.length >= 4,
             colors =
               ButtonDefaults.buttonColors(
                 containerColor = SankalanTokens.AntiqueGold,

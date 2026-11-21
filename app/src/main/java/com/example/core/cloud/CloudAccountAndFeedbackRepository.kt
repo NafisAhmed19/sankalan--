@@ -35,7 +35,10 @@ class CloudAccountAndFeedbackRepository(
       ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
 
   fun observeUserProfile(userId: String): Flow<UserProfile?> {
-    if (userId.isBlank()) return flowOf(null)
+    val activeUid = auth.currentUser?.uid
+    if (userId.isBlank() || userId.contains('/') || activeUid == null || activeUid != userId) {
+      return flowOf(null)
+    }
     return db.collection(COLLECTION_USERS)
       .document(userId)
       .snapshots()
@@ -148,8 +151,9 @@ class CloudAccountAndFeedbackRepository(
    * Streams community feedback items sorted newest-first client-side so no composite index is required,
    * while matching `allow list: if isSignedIn() && existing().status == 'published'` 1:1.
    */
-  fun observePublishedFeedback(): Flow<List<FeedbackEntry>> =
-    db.collection(COLLECTION_FEEDBACK)
+  fun observePublishedFeedback(): Flow<List<FeedbackEntry>> {
+    if (auth.currentUser == null) return flowOf(emptyList())
+    return db.collection(COLLECTION_FEEDBACK)
       .whereEqualTo("status", STATUS_PUBLISHED)
       .limit(60)
       .snapshots()
@@ -158,6 +162,7 @@ class CloudAccountAndFeedbackRepository(
           .toObjects(FeedbackEntry::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
           .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
       }
+  }
 
   suspend fun submitFeedback(
     authorName: String,
@@ -205,9 +210,10 @@ class CloudAccountAndFeedbackRepository(
     var docPath = COLLECTION_FEEDBACK
     return try {
       requireUserId()
-      require(feedbackId.isNotBlank()) { "Feedback ID must not be blank." }
-      docPath = "$COLLECTION_FEEDBACK/$feedbackId"
-      db.collection(COLLECTION_FEEDBACK).document(feedbackId).delete().await()
+      val cleanId = feedbackId.trim()
+      require(cleanId.isNotBlank() && !cleanId.contains('/')) { "Invalid feedback ID." }
+      docPath = "$COLLECTION_FEEDBACK/$cleanId"
+      db.collection(COLLECTION_FEEDBACK).document(cleanId).delete().await()
       Result.success(Unit)
     } catch (e: CancellationException) {
       throw e

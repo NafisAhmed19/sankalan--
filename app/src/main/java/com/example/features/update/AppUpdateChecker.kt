@@ -47,6 +47,7 @@ import com.example.ui.theme.SankalanTokens
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -82,15 +83,24 @@ object AppUpdateChecker {
   private const val DEFAULT_GITHUB_REPO = "NafisAhmed19/sankalan--"
   private val GITHUB_SLUG_REGEX = Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
+  fun isSafeHttpsUrl(rawUrl: String): Boolean {
+    val clean = rawUrl.trim()
+    if (!clean.startsWith("https://", ignoreCase = true)) return false
+    return runCatching {
+      val uri = URI(clean)
+      uri.scheme.equals("https", ignoreCase = true) &&
+        !uri.host.isNullOrBlank() &&
+        uri.userInfo == null &&
+        !uri.rawAuthority.orEmpty().contains('@')
+    }.getOrDefault(false)
+  }
+
   private fun extractGithubRepoSlugOrNull(clean: String): String? {
-    if (!clean.startsWith("https://github.com/", ignoreCase = true)) {
-      return null
-    }
+    if (!isSafeHttpsUrl(clean)) return null
+    val uri = runCatching { URI(clean) }.getOrNull() ?: return null
+    if (!uri.host.equals("github.com", ignoreCase = true)) return null
     val path =
-      clean
-        .substringAfter("github.com/", "")
-        .substringBefore('?')
-        .substringBefore('#')
+      (uri.path ?: "")
         .trim('/')
         .removeSuffix(".git")
     val segments = path.split('/').filter { it.isNotBlank() }
@@ -105,7 +115,7 @@ object AppUpdateChecker {
     val cleanSlug = clean.trim('/')
     return when {
       pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest/download/version.json"
-      clean.startsWith("https://", ignoreCase = true) -> clean
+      isSafeHttpsUrl(clean) -> clean
       GITHUB_SLUG_REGEX.matches(cleanSlug) -> "https://github.com/$cleanSlug/releases/latest/download/version.json"
       else -> "https://github.com/$DEFAULT_GITHUB_REPO/releases/latest/download/version.json"
     }
@@ -120,7 +130,7 @@ object AppUpdateChecker {
     val cleanSlug = clean.trim('/')
     return when {
       pastedGithubSlug != null -> "https://github.com/$pastedGithubSlug/releases/latest"
-      clean.startsWith("https://", ignoreCase = true) -> {
+      isSafeHttpsUrl(clean) -> {
         if (clean.contains("/releases/latest/download/")) {
           clean.substringBefore("/releases/latest/download/") + "/releases/latest"
         } else {
@@ -160,7 +170,7 @@ object AppUpdateChecker {
     if (parsed.downloadUrl.isBlank()) {
       return UpdateCheckResult.Failed("Missing downloadUrl")
     }
-    if (!parsed.downloadUrl.startsWith("https://", ignoreCase = true)) {
+    if (!isSafeHttpsUrl(parsed.downloadUrl)) {
       return UpdateCheckResult.Failed("Untrusted non-HTTPS downloadUrl")
     }
     return if (parsed.versionCode > currentVersionCode) {
@@ -176,23 +186,26 @@ object AppUpdateChecker {
     currentVersionName: String,
   ): UpdateCheckResult =
     withContext(Dispatchers.IO) {
+      var conn: HttpURLConnection? = null
       try {
-        val url = URL(resolveManifestUrl(repoOrUrl))
-        if (!url.protocol.equals("https", ignoreCase = true)) {
+        val manifestUrl = resolveManifestUrl(repoOrUrl)
+        if (!isSafeHttpsUrl(manifestUrl)) {
           return@withContext UpdateCheckResult.Failed("HTTPS required")
         }
-        val conn =
+        val url = URL(manifestUrl)
+        conn =
           (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 7000
             readTimeout = 7000
+            useCaches = false
             setRequestProperty("Accept", "application/json")
           }
         val code = conn.responseCode
         if (code !in 200..299) {
           return@withContext UpdateCheckResult.Failed("HTTP $code")
         }
-        if (!conn.url.protocol.equals("https", ignoreCase = true)) {
+        if (!isSafeHttpsUrl(conn.url.toString())) {
           return@withContext UpdateCheckResult.Failed("HTTPS redirect required")
         }
         val body =
@@ -209,12 +222,14 @@ object AppUpdateChecker {
         parseUpdateManifest(body, currentVersionCode, currentVersionName)
       } catch (t: Throwable) {
         UpdateCheckResult.Failed(t.message ?: "Network error")
+      } finally {
+        runCatching { conn?.disconnect() }
       }
     }
 
   fun openReleasePage(context: Context, url: String) {
-    if (!url.startsWith("https://", ignoreCase = true)) return
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+    if (!isSafeHttpsUrl(url)) return
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).apply {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     runCatching { context.startActivity(intent) }
@@ -267,8 +282,8 @@ object AppUpdateNotifier {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
     val targetIntent =
-      if (release.downloadUrl.startsWith("https://", ignoreCase = true)) {
-        Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl)).apply {
+      if (AppUpdateChecker.isSafeHttpsUrl(release.downloadUrl)) {
+        Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl.trim())).apply {
           addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
       } else {

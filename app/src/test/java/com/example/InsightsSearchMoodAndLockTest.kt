@@ -228,4 +228,43 @@ class InsightsSearchMoodAndLockTest {
     assertFalse(lockManager.hasPin())
     assertFalse(lockManager.verifyPin("2580"))
   }
+
+  @Test
+  fun `app lock enforces brute force cooldown after 5 wrong attempts and upgrades legacy v1 hashes`() {
+    var fakeNowMs = 1_000_000L
+    val lockManager = AppLockManager(context) { fakeNowMs }
+    assertTrue(lockManager.setPin("4321"))
+
+    // 4 wrong attempts do not lock yet
+    repeat(4) {
+      assertFalse(lockManager.verifyPin("0000"))
+      assertEquals(0, lockManager.remainingLockoutSeconds())
+    }
+    // 5th wrong attempt triggers 30s cooldown
+    assertFalse(lockManager.verifyPin("0000"))
+    assertEquals(30, lockManager.remainingLockoutSeconds())
+    // Even the correct PIN is rejected during active cooldown
+    assertFalse(lockManager.verifyPin("4321"))
+
+    // Advance clock past cooldown -> correct PIN unlocks and resets failed counter
+    fakeNowMs += 31_000L
+    assertEquals(0, lockManager.remainingLockoutSeconds())
+    assertTrue(lockManager.verifyPin("4321"))
+    assertEquals(0, lockManager.failedAttemptsCount())
+
+    // Simulate legacy v1 salted SHA-256 PIN stored on disk and verify transparent upgrade to v2 PBKDF2
+    val prefs = context.getSharedPreferences("sankalan_lock_store", Context.MODE_PRIVATE)
+    val legacySalt = PinHasher.generateSalt()
+    val legacyHash = PinHasher.hashPin("7890", legacySalt)
+    prefs.edit()
+      .putString("pin_salt_v1", legacySalt)
+      .putString("pin_hash_v1", legacyHash)
+      .remove("pin_algo_v2")
+      .commit()
+    assertTrue(lockManager.verifyPin("7890"))
+    val upgradedAlgo = prefs.getString("pin_algo_v2", null)
+    assertNotNull(upgradedAlgo)
+    assertTrue(upgradedAlgo!!.startsWith("pbkdf2_"))
+    assertTrue(lockManager.verifyPin("7890"))
+  }
 }

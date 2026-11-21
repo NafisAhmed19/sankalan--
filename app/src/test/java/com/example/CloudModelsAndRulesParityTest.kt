@@ -2,13 +2,21 @@ package com.example
 
 import com.example.core.cloud.FeedbackCategory
 import com.example.core.cloud.FeedbackEntry
+import com.example.core.cloud.OperationType
 import com.example.core.cloud.UserProfile
+import com.example.core.cloud.handleFirestoreError
 import com.example.core.i18n.StringsBnBd
 import com.example.core.i18n.StringsEn
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class CloudModelsAndRulesParityTest {
 
   @Test
@@ -53,5 +61,20 @@ class CloudModelsAndRulesParityTest {
       assertTrue(s.feedbackCommentsTitle.isNotBlank())
       assertTrue(s.feedbackScrollHint.isNotBlank())
     }
+  }
+
+  @Test
+  fun `firestore error formatter redacts user uid path and omits email pii`() {
+    val payload =
+      handleFirestoreError(
+        exception = IllegalStateException("PERMISSION_DENIED"),
+        operationType = OperationType.WRITE,
+        path = "users/uid_secret_123",
+      )
+    val parsed = org.json.JSONObject(payload)
+    assertEquals("users/<uid>", parsed.optString("path"))
+    assertFalse(payload.contains("uid_secret_123"))
+    assertFalse(payload.contains("\"email\""))
+    assertFalse(payload.contains("\"providerInfo\""))
   }
 }

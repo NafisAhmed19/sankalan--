@@ -9,7 +9,6 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.ServerTimestamp
 import kotlinx.coroutines.CancellationException
-import org.json.JSONArray
 import org.json.JSONObject
 
 enum class OperationType(val value: String) {
@@ -33,30 +32,24 @@ fun handleFirestoreError(
       ?: exception
 
   val currentUser = runCatching { FirebaseAuth.getInstance().currentUser }.getOrNull()
+  val redactedPath =
+    path?.let { raw ->
+      val segments = raw.split('/')
+      if (segments.size >= 2 && segments[0] == "users") "users/<uid>" else raw
+    }
 
-  val providerInfoList =
-    currentUser?.providerData?.map { provider ->
-      JSONObject().apply {
-        put("providerId", provider.providerId)
-        put("email", provider.email)
-      }
-    } ?: emptyList()
-
-  val authInfoJson =
+  val authSummaryJson =
     JSONObject().apply {
-      put("userId", currentUser?.uid)
-      put("email", currentUser?.email)
-      put("emailVerified", currentUser?.isEmailVerified)
-      put("tenantId", currentUser?.tenantId)
-      put("providerInfo", JSONArray(providerInfoList))
+      put("signedIn", currentUser != null)
+      put("emailVerified", currentUser?.isEmailVerified ?: false)
     }
 
   val errorInfoJson =
     JSONObject().apply {
-      put("error", rootError.message ?: rootError.toString())
+      put("error", rootError.message ?: rootError::class.java.simpleName)
       put("operationType", operationType.value)
-      put("path", path)
-      put("authInfo", authInfoJson)
+      put("path", redactedPath)
+      put("authSummary", authSummaryJson)
     }
 
   val jsonString = errorInfoJson.toString()
